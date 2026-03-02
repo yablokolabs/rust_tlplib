@@ -225,3 +225,43 @@ fn atomic_fetchadd_rejects_invalid_operand_length() {
     let pkt = mk_pkt(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &data);
     assert_eq!(new_atomic_req(&pkt).unwrap_err(), TlpError::InvalidLength);
 }
+
+// ============================================================================
+// DMWr: Deferrable Memory Write Request
+// ============================================================================
+
+#[test]
+fn dmwr32_decode_via_tlppacket() {
+    // DMWr32: fmt=010, type=11011 → byte0 = 0x5B
+    let data = vec![0x5B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    let pkt = TlpPacket::new(data);
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+    assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+}
+
+#[test]
+fn dmwr64_decode_via_tlppacket() {
+    // DMWr64: fmt=011, type=11011 → byte0 = 0x7B
+    let data = vec![0x7B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    let pkt = TlpPacket::new(data);
+    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+    assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+}
+
+#[test]
+fn dmwr_rejects_nodata_formats() {
+    // NoData 3DW: fmt=000, type=11011 → byte0 = 0x1B
+    let pkt1 = TlpPacket::new(vec![0x1B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    assert_eq!(pkt1.get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+
+    // NoData 4DW: fmt=001, type=11011 → byte0 = 0x3B
+    let pkt2 = TlpPacket::new(vec![0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    assert_eq!(pkt2.get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+}
+
+#[test]
+fn dmwr_is_non_posted() {
+    assert!(TlpType::DeferrableMemWriteReq.is_non_posted());
+    // Normal MemWrite is posted (not non-posted)
+    assert!(!TlpType::MemWriteReq.is_non_posted());
+}

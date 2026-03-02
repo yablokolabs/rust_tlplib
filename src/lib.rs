@@ -82,6 +82,7 @@ pub enum TlpFormatEncodingType {
     FetchAtomicOpRequest    = 0b01100,
     UnconSwapAtomicOpRequest= 0b01101,
     CompSwapAtomicOpRequest = 0b01110,
+    DeferrableMemoryWriteRequest = 0b11011,
 }
 
 impl TryFrom<u32> for TlpFormatEncodingType {
@@ -99,6 +100,7 @@ impl TryFrom<u32> for TlpFormatEncodingType {
             x if x == TlpFormatEncodingType::FetchAtomicOpRequest as u32 	=> Ok(TlpFormatEncodingType::FetchAtomicOpRequest),
             x if x == TlpFormatEncodingType::UnconSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest),
             x if x == TlpFormatEncodingType::CompSwapAtomicOpRequest as u32 => Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest),
+            x if x == TlpFormatEncodingType::DeferrableMemoryWriteRequest as u32 => Ok(TlpFormatEncodingType::DeferrableMemoryWriteRequest),
             _ => Err(TlpError::InvalidType),
         }
     }
@@ -125,6 +127,7 @@ pub enum TlpType {
     FetchAddAtomicOpReq,
     SwapAtomicOpReq,
     CompareSwapAtomicOpReq,
+    DeferrableMemWriteReq,
     LocalTlpPrefix,
     EndToEndTlpPrefix,
 }
@@ -150,10 +153,26 @@ impl Display for TlpType {
             TlpType::FetchAddAtomicOpReq => "Fetch Add Atomic Op Request",
             TlpType::SwapAtomicOpReq => "Swap Atomic Op Request",
             TlpType::CompareSwapAtomicOpReq => "Compare Swap Atomic Op Request",
+            TlpType::DeferrableMemWriteReq => "Deferrable Memory Write Request",
             TlpType::LocalTlpPrefix => "Local Tlp Prefix",
             TlpType::EndToEndTlpPrefix => "End To End Tlp Prefix",
         };
         write!(fmt, "{}", name)
+    }
+}
+
+impl TlpType {
+    /// Returns `true` for non-posted TLP types (requests that expect a Completion).
+    pub fn is_non_posted(&self) -> bool {
+        matches!(self,
+            TlpType::MemReadReq |
+            TlpType::MemReadLockReq |
+            TlpType::IOReadReq | TlpType::IOWriteReq |
+            TlpType::ConfType0ReadReq | TlpType::ConfType0WriteReq |
+            TlpType::ConfType1ReadReq | TlpType::ConfType1WriteReq |
+            TlpType::FetchAddAtomicOpReq | TlpType::SwapAtomicOpReq | TlpType::CompareSwapAtomicOpReq |
+            TlpType::DeferrableMemWriteReq
+        )
     }
 }
 
@@ -260,6 +279,14 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
 				match TlpFmt::try_from(tlp_fmt) {
 					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CompareSwapAtomicOpReq),
 					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::CompareSwapAtomicOpReq),
+					Ok(_) => Err(TlpError::UnsupportedCombination),
+					Err(e) => Err(e),
+				}
+			}
+			Ok(TlpFormatEncodingType::DeferrableMemoryWriteRequest) => {
+				match TlpFmt::try_from(tlp_fmt) {
+					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::DeferrableMemWriteReq),
+					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::DeferrableMemWriteReq),
 					Ok(_) => Err(TlpError::UnsupportedCombination),
 					Err(e) => Err(e),
 				}
@@ -764,6 +791,7 @@ impl TlpPacketHeader {
 ///      TlpType::MemReadReq |
 ///      TlpType::MemReadLockReq |
 ///      TlpType::MemWriteReq |
+///      TlpType::DeferrableMemWriteReq |
 ///      TlpType::IOReadReq |
 ///      TlpType::IOWriteReq |
 ///      TlpType::FetchAddAtomicOpReq |
@@ -974,6 +1002,7 @@ mod tests {
         const TY_ATOM_FETCH: u8 = 0b01100;
         const TY_ATOM_SWAP:  u8 = 0b01101;
         const TY_ATOM_CAS:   u8 = 0b01110;
+        const TY_DMWR:       u8 = 0b11011;
 
         // Memory Request: NoData → Read, WithData → Write; both 3DW and 4DW
         assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_MEM).get_tlp_type().unwrap(), TlpType::MemReadReq);
@@ -1014,6 +1043,10 @@ mod tests {
 
         assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
         assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+
+        // DMWr: WithData only (3DW and 4DW)
+        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
     }
 
     // ── negative path: every illegal (fmt, type) pair → UnsupportedCombination ─
@@ -1035,6 +1068,7 @@ mod tests {
         const TY_ATOM_FETCH: u8 = 0b01100;
         const TY_ATOM_SWAP:  u8 = 0b01101;
         const TY_ATOM_CAS:   u8 = 0b01110;
+        const TY_DMWR:       u8 = 0b11011;
 
         // IO: 4DW variants are illegal
         assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_IO).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
@@ -1069,6 +1103,113 @@ mod tests {
         assert_eq!(dw0(FMT_PREFIX, TY_IO).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
         assert_eq!(dw0(FMT_PREFIX, TY_CPL).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
         assert_eq!(dw0(FMT_PREFIX, TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+
+        // DMWr: NoData variants are illegal (DMWr always carries data)
+        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(dw0(FMT_PREFIX,      TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+    }
+
+    // ── DMWr: Deferrable Memory Write header decode ────────────────────────
+
+    #[test]
+    fn tlp_header_dmwr32_decode() {
+        // Fmt=010 (3DW w/ Data), Type=11011 (DMWr) → byte0 = 0x5B
+        let dmwr32 = TlpHeader([0x5B, 0x00, 0x00, 0x00]);
+        assert_eq!(dmwr32.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+    }
+
+    #[test]
+    fn tlp_header_dmwr64_decode() {
+        // Fmt=011 (4DW w/ Data), Type=11011 (DMWr) → byte0 = 0x7B
+        let dmwr64 = TlpHeader([0x7B, 0x00, 0x00, 0x00]);
+        assert_eq!(dmwr64.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+    }
+
+    #[test]
+    fn tlp_header_dmwr_rejects_nodata_formats() {
+        // Fmt=000, Type=11011 → byte0 = 0x1B
+        let dmwr_bad_3dw_nodata = TlpHeader([0x1B, 0x00, 0x00, 0x00]);
+        assert_eq!(
+            dmwr_bad_3dw_nodata.get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+
+        // Fmt=001, Type=11011 → byte0 = 0x3B
+        let dmwr_bad_4dw_nodata = TlpHeader([0x3B, 0x00, 0x00, 0x00]);
+        assert_eq!(
+            dmwr_bad_4dw_nodata.get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+    }
+
+    #[test]
+    fn dmwr_full_packet_3dw_fields() {
+        // DMWr32 through TlpPacket pipeline with MemRequest3DW fields
+        let payload = [
+            0xAB, 0xCD, 0x42, 0x0F, // req_id=0xABCD, tag=0x42, BE=0x0F
+            0xDE, 0xAD, 0x00, 0x00, // address32=0xDEAD0000
+        ];
+        let pkt = TlpPacket::new(mk_tlp(0b010, 0b11011, &payload));
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+
+        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap());
+        assert_eq!(mr.req_id(), 0xABCD);
+        assert_eq!(mr.tag(),    0x42);
+        assert_eq!(mr.address(), 0xDEAD_0000);
+    }
+
+    #[test]
+    fn dmwr_full_packet_4dw_fields() {
+        // DMWr64 through TlpPacket pipeline with MemRequest4DW fields
+        let payload = [
+            0xBE, 0xEF, 0xA5, 0x00, // req_id=0xBEEF, tag=0xA5
+            0x11, 0x22, 0x33, 0x44, // address64 hi
+            0x55, 0x66, 0x77, 0x88, // address64 lo
+        ];
+        let pkt = TlpPacket::new(mk_tlp(0b011, 0b11011, &payload));
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+
+        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap());
+        assert_eq!(mr.req_id(), 0xBEEF);
+        assert_eq!(mr.tag(),    0xA5);
+        assert_eq!(mr.address(), 0x1122_3344_5566_7788);
+    }
+
+    // ── is_non_posted() semantics ─────────────────────────────────────────────
+
+    #[test]
+    fn is_non_posted_returns_true_for_non_posted_types() {
+        assert!(TlpType::MemReadReq.is_non_posted());
+        assert!(TlpType::MemReadLockReq.is_non_posted());
+        assert!(TlpType::IOReadReq.is_non_posted());
+        assert!(TlpType::IOWriteReq.is_non_posted());
+        assert!(TlpType::ConfType0ReadReq.is_non_posted());
+        assert!(TlpType::ConfType0WriteReq.is_non_posted());
+        assert!(TlpType::ConfType1ReadReq.is_non_posted());
+        assert!(TlpType::ConfType1WriteReq.is_non_posted());
+        assert!(TlpType::FetchAddAtomicOpReq.is_non_posted());
+        assert!(TlpType::SwapAtomicOpReq.is_non_posted());
+        assert!(TlpType::CompareSwapAtomicOpReq.is_non_posted());
+        assert!(TlpType::DeferrableMemWriteReq.is_non_posted());
+    }
+
+    #[test]
+    fn is_non_posted_returns_false_for_posted_types() {
+        assert!(!TlpType::MemWriteReq.is_non_posted());
+        assert!(!TlpType::MsgReq.is_non_posted());
+        assert!(!TlpType::MsgReqData.is_non_posted());
+    }
+
+    #[test]
+    fn is_non_posted_returns_false_for_completions() {
+        // Completions are responses, not requests — is_non_posted() is false
+        assert!(!TlpType::Cpl.is_non_posted());
+        assert!(!TlpType::CplData.is_non_posted());
+        assert!(!TlpType::CplLocked.is_non_posted());
+        assert!(!TlpType::CplDataLocked.is_non_posted());
     }
 
     // ── atomic tier-A: real bytes through the full packet pipeline ─────────────

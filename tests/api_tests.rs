@@ -97,9 +97,12 @@ fn tlp_type_enum_has_all_expected_variants() {
     let _t17: TlpType = TlpType::SwapAtomicOpReq;
     let _t18: TlpType = TlpType::CompareSwapAtomicOpReq;
     
+    // Deferrable Memory Write
+    let _t19: TlpType = TlpType::DeferrableMemWriteReq;
+    
     // Prefixes
-    let _t19: TlpType = TlpType::LocalTlpPrefix;
-    let _t20: TlpType = TlpType::EndToEndTlpPrefix;
+    let _t20: TlpType = TlpType::LocalTlpPrefix;
+    let _t21: TlpType = TlpType::EndToEndTlpPrefix;
 }
 
 #[test]
