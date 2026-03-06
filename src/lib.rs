@@ -424,8 +424,6 @@ pub trait ConfigurationRequest {
 /// # Examples
 ///
 /// ```
-/// use std::convert::TryFrom;
-///
 /// use rtlp_lib::TlpPacket;
 /// use rtlp_lib::TlpFmt;
 /// use rtlp_lib::ConfigurationRequest;
