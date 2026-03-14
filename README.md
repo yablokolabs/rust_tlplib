@@ -45,7 +45,7 @@ let bytes = vec![
     0x00, 0x00, 0x20, 0x0F,   // DW1: req_id=0x0000 tag=0x20 BE=0x0F
     0xF6, 0x20, 0x00, 0x0C,   // DW2: address32=0xF620000C
 ];
-let packet = TlpPacket::new(bytes);
+let packet = TlpPacket::new(bytes).unwrap();
 
 let tlp_type   = packet.get_tlp_type().unwrap();
 let tlp_format = packet.get_tlp_format().unwrap();
@@ -55,7 +55,7 @@ match tlp_type {
     TlpType::MemReadLockReq |
     TlpType::DeferrableMemWriteReq |
     TlpType::IOReadReq | TlpType::IOWriteReq => {
-        let mr = new_mem_req(packet.get_data(), &tlp_format);
+        let mr = new_mem_req(packet.get_data(), &tlp_format).unwrap();
         println!("req_id=0x{:04X}  tag=0x{:02X}  addr=0x{:X}",
                  mr.req_id(), mr.tag(), mr.address());
     }
