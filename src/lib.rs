@@ -1607,7 +1607,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // completer_id, cmpl_stat, bcm, byte_cnt
             0x00, 0x00, 0x00, 0x7F, // req_id, tag, R=0, laddr=0x7F
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(cmpl.laddr(), 0x7F);
     }
 
@@ -1619,7 +1619,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x40,
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(cmpl.laddr(), 0x40);
     }
 
@@ -1631,7 +1631,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0xD5,
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(cmpl.laddr(), 0x55);
     }
 
@@ -1643,7 +1643,7 @@ mod tests {
             0x20, 0x01, 0x00, 0xFC, // completer_id=0x2001, status=0, bcm=0, byte_cnt=0x0FC
             0x12, 0x34, 0xAB, 0x64, // req_id=0x1234, tag=0xAB, R=0, laddr=0x64
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(cmpl.cmpl_id(), 0x2001);
         assert_eq!(cmpl.byte_cnt(), 0x0FC);
         assert_eq!(cmpl.req_id(), 0x1234);
@@ -1674,7 +1674,7 @@ mod tests {
             0xDE, 0xAD, 0xBE, 0xEF, // DW3
             0x00, 0x00, 0x00, 0x00, // DW4
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(msg.dw3(), 0xDEAD_BEEF);
     }
 
@@ -1686,7 +1686,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // DW3
             0xCA, 0xFE, 0xBA, 0xBE, // DW4
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(msg.dw4(), 0xCAFE_BABE);
     }
 
@@ -1698,7 +1698,7 @@ mod tests {
             0xFF, 0xFF, 0xFF, 0xFF,
             0xFF, 0xFF, 0xFF, 0xFF,
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(msg.dw3(), 0xFFFF_FFFF);
         assert_eq!(msg.dw4(), 0xFFFF_FFFF);
     }
@@ -1711,7 +1711,7 @@ mod tests {
             0x12, 0x34, 0x56, 0x78,
             0x9A, 0xBC, 0xDE, 0xF0,
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW).unwrap();
         assert_eq!(msg.req_id(),   0xABCD);
         assert_eq!(msg.tag(),      0x42);
         assert_eq!(msg.msg_code(), 0x7F);
