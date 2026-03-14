@@ -508,8 +508,8 @@ bitfield! {
     pub get_byte_cnt,       _: 31, 20;
     pub get_req_id,         _: 47, 32;
     pub get_tag,            _: 55, 48;
-    r,                      _: 57, 56;
-    pub get_laddr,          _: 63, 58;
+    r,                      _: 56, 56;
+    pub get_laddr,          _: 63, 57;
 }
 
 impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
@@ -1487,6 +1487,60 @@ mod tests {
         assert_eq!(a.address(),  0x0000_4000);
         assert_eq!(a.operand0(), 0xCAFE_BABE);
         assert_eq!(a.operand1(), Some(0xDEAD_BEEF));
+    }
+
+    // ── CompletionReqDW23: Lower Address 7-bit decode ──────────────────────
+
+    #[test]
+    fn completion_laddr_full_7_bits() {
+        // Lower Address = 0x7F (127) — all 7 bits set
+        // DW2 byte 3: R(1 bit)=0, LowerAddr(7 bits)=0x7F → byte = 0x7F
+        let bytes = vec![
+            0x00, 0x00, 0x00, 0x00, // completer_id, cmpl_stat, bcm, byte_cnt
+            0x00, 0x00, 0x00, 0x7F, // req_id, tag, R=0, laddr=0x7F
+        ];
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(cmpl.laddr(), 0x7F);
+    }
+
+    #[test]
+    fn completion_laddr_bit6_set() {
+        // Lower Address = 64 (0x40) — bit 6 is the bit that was previously lost
+        // DW2 byte 3: R=0, LowerAddr=0x40 → byte = 0x40
+        let bytes = vec![
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x40,
+        ];
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(cmpl.laddr(), 0x40);
+    }
+
+    #[test]
+    fn completion_laddr_with_reserved_bit_set() {
+        // R=1, LowerAddr=0x55 (85)
+        // DW2 byte 3: 1_1010101 = 0xD5
+        let bytes = vec![
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xD5,
+        ];
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(cmpl.laddr(), 0x55);
+    }
+
+    #[test]
+    fn completion_full_fields_with_laddr() {
+        // completer_id=0x2001, cmpl_stat=0, bcm=0, byte_cnt=0x0FC,
+        // req_id=0x1234, tag=0xAB, R=0, laddr=100 (0x64)
+        let bytes = vec![
+            0x20, 0x01, 0x00, 0xFC, // completer_id=0x2001, status=0, bcm=0, byte_cnt=0x0FC
+            0x12, 0x34, 0xAB, 0x64, // req_id=0x1234, tag=0xAB, R=0, laddr=0x64
+        ];
+        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        assert_eq!(cmpl.cmpl_id(), 0x2001);
+        assert_eq!(cmpl.byte_cnt(), 0x0FC);
+        assert_eq!(cmpl.req_id(), 0x1234);
+        assert_eq!(cmpl.tag(), 0xAB);
+        assert_eq!(cmpl.laddr(), 0x64);
     }
 
     #[test]
