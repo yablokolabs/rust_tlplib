@@ -45,7 +45,7 @@ let bytes = vec![
     0x00, 0x00, 0x20, 0x0F,   // DW1: req_id=0x0000 tag=0x20 BE=0x0F
     0xF6, 0x20, 0x00, 0x0C,   // DW2: address32=0xF620000C
 ];
-let packet = TlpPacket::new(bytes);
+let packet = TlpPacket::new(bytes).unwrap();
 
 let tlp_type   = packet.get_tlp_type().unwrap();
 let tlp_format = packet.get_tlp_format().unwrap();
