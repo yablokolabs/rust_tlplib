@@ -440,6 +440,13 @@ pub trait ConfigurationRequest {
 ///     //println!("Configuration Request Bus: {:x}", config_req.bus_nr());
 /// }
 /// ```
+///
+/// # Errors
+///
+/// This function only supports configuration requests with 3DW headers.
+/// It returns an [`Err(TlpError::UnsupportedCombination)`](TlpError::UnsupportedCombination)
+/// if `format` is not [`TlpFmt::NoDataHeader3DW`] or [`TlpFmt::WithDataHeader3DW`]
+/// (for example, when using a 4DW header format or a TLP prefix).
 pub fn new_conf_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn ConfigurationRequest>, TlpError> {
 	match format {
 		TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW => Ok(Box::new(ConfigRequest(bytes))),
