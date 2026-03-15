@@ -7,6 +7,8 @@ extern crate bitfield;
 /// Errors that can occur when parsing TLP packets
 #[derive(Debug, Clone, PartialEq)]
 pub enum TlpError {
+    /// Input hex string has invalid format (odd length, non-hex characters)
+    InvalidHex,
     /// Invalid format field value (bits don't match any known format)
     InvalidFormat,
     /// Invalid type field value (bits don't match any known type encoding)
@@ -16,6 +18,20 @@ pub enum TlpError {
     /// Payload/header byte slice is too short to contain the expected fields
     InvalidLength,
 }
+
+impl Display for TlpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            TlpError::InvalidHex => write!(f, "invalid hex string"),
+            TlpError::InvalidFormat => write!(f, "invalid TLP format field"),
+            TlpError::InvalidType => write!(f, "invalid TLP type field"),
+            TlpError::UnsupportedCombination => write!(f, "unsupported format/type combination"),
+            TlpError::InvalidLength => write!(f, "input too short"),
+        }
+    }
+}
+
+impl std::error::Error for TlpError {}
 
 #[repr(u8)]
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -950,6 +966,282 @@ impl TlpPacket {
 
     pub fn get_tlp_format(&self) -> Result<TlpFmt, TlpError> {
         TlpFmt::try_from(self.header.get_format())
+    }
+
+    /// Returns the raw bytes of the full packet (header + data) reassembled.
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![0u8; 4];
+        // Reconstruct DW0 from header fields
+        let b0 = ((self.header.get_format() & 0x7) << 5) | (self.header.get_type() & 0x1f);
+        let t9 = self.header.get_t9() & 1;
+        let tc = self.header.get_tc() & 7;
+        let t8 = self.header.get_t8() & 1;
+        let attr_b2 = self.header.get_attr_b2() & 1;
+        let ln = self.header.get_ln() & 1;
+        let th = self.header.get_th() & 1;
+        let b1 = (t9 << 7) | (tc << 4) | (t8 << 3) | (attr_b2 << 2) | (ln << 1) | th;
+        let td = self.header.get_td() & 1;
+        let ep = self.header.get_ep() & 1;
+        let attr = self.header.get_attr() & 3;
+        let at = self.header.get_at() & 3;
+        let length = self.header.get_length();
+        let b2 = (td << 7) | (ep << 6) | (attr << 4) | (at << 2) | ((length >> 8) & 3);
+        let b3 = length & 0xff;
+        bytes[0] = b0 as u8;
+        bytes[1] = b1 as u8;
+        bytes[2] = b2 as u8;
+        bytes[3] = b3 as u8;
+        bytes.extend_from_slice(&self.data);
+        bytes
+    }
+}
+
+/// Decode a TLP packet from a hex string.
+///
+/// Accepts hex strings with or without spaces, e.g.:
+/// - `"00002001040000012001FF00"`
+/// - `"00 00 20 01 04 00 00 01 20 01 FF 00"`
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::TlpPacket;
+/// use rtlp_lib::TlpType;
+///
+/// let pkt = "00 00 20 01 04 00 00 01 20 01 FF 00".parse::<TlpPacket>().unwrap();
+/// assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+/// println!("{}", pkt);
+/// ```
+impl std::str::FromStr for TlpPacket {
+    type Err = TlpError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let hex: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+        if hex.len() % 2 != 0 {
+            return Err(TlpError::InvalidHex);
+        }
+        let bytes: Result<Vec<u8>, _> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16))
+            .collect();
+        let bytes = bytes.map_err(|_| TlpError::InvalidHex)?;
+        TlpPacket::new(bytes)
+    }
+}
+
+impl TryFrom<&[u8]> for TlpPacket {
+    type Error = TlpError;
+
+    /// Parse a TLP packet from a byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::convert::TryFrom;
+    /// use rtlp_lib::TlpPacket;
+    /// use rtlp_lib::TlpType;
+    ///
+    /// let bytes = [0x00u8, 0x00, 0x20, 0x01, 0x04, 0x00, 0x00, 0x01];
+    /// let pkt = TlpPacket::try_from(bytes.as_slice()).unwrap();
+    /// assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+    /// ```
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        TlpPacket::new(bytes.to_vec())
+    }
+}
+
+impl Display for TlpPacketHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let type_str = match self.get_tlp_type() {
+            Ok(t) => format!("{}", t),
+            Err(_) => "Unknown".to_string(),
+        };
+        let fmt_str = match TlpFmt::try_from(self.get_format()) {
+            Ok(fmt) => format!("{}", fmt),
+            Err(_) => "Unknown".to_string(),
+        };
+        write!(
+            f,
+            "{} [{}] len={} TC={} TD={} EP={}",
+            type_str,
+            fmt_str,
+            self.get_length(),
+            self.get_tc(),
+            self.get_td(),
+            self.get_ep(),
+        )
+    }
+}
+
+impl Display for TlpPacket {
+    /// Produces a Wireshark-style one-line summary of the TLP packet.
+    ///
+    /// Format varies by TLP type:
+    /// - Memory requests: `MRd32 len=1 req=0000 tag=20 addr=F620000C`
+    /// - Completions: `CplD len=1 cpl=2001 req=0400 tag=00 stat=0 bc=252`
+    /// - Config requests: `CfgRd0 len=1 req=0400 bus=01 dev=00 fn=0 reg=01`
+    /// - Messages: `Msg len=0 req=0000 code=00`
+    /// - Atomics: `FetchAdd32 req=DEAD tag=42 addr=C0010004 op0=A`
+    /// - Fallback: header summary with hex dump
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let tlp_type = match self.get_tlp_type() {
+            Ok(t) => t,
+            Err(_) => return write!(f, "Unknown TLP: {:02X?}", self.raw_bytes()),
+        };
+        let fmt = match self.get_tlp_format() {
+            Ok(fmt) => fmt,
+            Err(_) => return write!(f, "Unknown TLP: {:02X?}", self.raw_bytes()),
+        };
+        let length = self.header.get_length();
+        let data = self.get_data();
+
+        // Short type name for the summary line
+        let short_name = match tlp_type {
+            TlpType::MemReadReq => match fmt {
+                TlpFmt::NoDataHeader3DW => "MRd32",
+                _ => "MRd64",
+            },
+            TlpType::MemReadLockReq => "MRdLk",
+            TlpType::MemWriteReq => match fmt {
+                TlpFmt::WithDataHeader3DW => "MWr32",
+                _ => "MWr64",
+            },
+            TlpType::IOReadReq => "IORd",
+            TlpType::IOWriteReq => "IOWr",
+            TlpType::ConfType0ReadReq => "CfgRd0",
+            TlpType::ConfType0WriteReq => "CfgWr0",
+            TlpType::ConfType1ReadReq => "CfgRd1",
+            TlpType::ConfType1WriteReq => "CfgWr1",
+            TlpType::MsgReq => "Msg",
+            TlpType::MsgReqData => "MsgD",
+            TlpType::Cpl => "Cpl",
+            TlpType::CplData => "CplD",
+            TlpType::CplLocked => "CplLk",
+            TlpType::CplDataLocked => "CplDLk",
+            TlpType::FetchAddAtomicOpReq => match fmt {
+                TlpFmt::WithDataHeader3DW => "FetchAdd32",
+                _ => "FetchAdd64",
+            },
+            TlpType::SwapAtomicOpReq => match fmt {
+                TlpFmt::WithDataHeader3DW => "Swap32",
+                _ => "Swap64",
+            },
+            TlpType::CompareSwapAtomicOpReq => match fmt {
+                TlpFmt::WithDataHeader3DW => "CAS32",
+                _ => "CAS64",
+            },
+            TlpType::DeferrableMemWriteReq => match fmt {
+                TlpFmt::WithDataHeader3DW => "DMWr32",
+                _ => "DMWr64",
+            },
+            TlpType::LocalTlpPrefix => "LclPfx",
+            TlpType::EndToEndTlpPrefix => "E2EPfx",
+        };
+
+        match tlp_type {
+            // Memory / IO / Lock requests — show address
+            TlpType::MemReadReq
+            | TlpType::MemReadLockReq
+            | TlpType::MemWriteReq
+            | TlpType::DeferrableMemWriteReq
+            | TlpType::IOReadReq
+            | TlpType::IOWriteReq => {
+                if let Ok(mr) = new_mem_req(data.clone(), &fmt) {
+                    write!(
+                        f,
+                        "{} len={} req={:04X} tag={:02X} addr={:X}",
+                        short_name,
+                        length,
+                        mr.req_id(),
+                        mr.tag(),
+                        mr.address(),
+                    )
+                } else {
+                    write!(f, "{} len={}", short_name, length)
+                }
+            }
+            // Config requests — show bus/dev/fn/reg
+            TlpType::ConfType0ReadReq
+            | TlpType::ConfType0WriteReq
+            | TlpType::ConfType1ReadReq
+            | TlpType::ConfType1WriteReq => {
+                if let Ok(cr) = new_conf_req(data.clone(), &fmt) {
+                    write!(
+                        f,
+                        "{} len={} req={:04X} bus={:02X} dev={:02X} fn={} reg={:02X}",
+                        short_name,
+                        length,
+                        cr.req_id(),
+                        cr.bus_nr(),
+                        cr.dev_nr(),
+                        cr.func_nr(),
+                        cr.reg_nr(),
+                    )
+                } else {
+                    write!(f, "{} len={}", short_name, length)
+                }
+            }
+            // Completions — show completer, requester, status, byte count
+            TlpType::Cpl | TlpType::CplData | TlpType::CplLocked | TlpType::CplDataLocked => {
+                if let Ok(cpl) = new_cmpl_req(data.clone(), &fmt) {
+                    write!(
+                        f,
+                        "{} len={} cpl={:04X} req={:04X} tag={:02X} stat={} bc={}",
+                        short_name,
+                        length,
+                        cpl.cmpl_id(),
+                        cpl.req_id(),
+                        cpl.tag(),
+                        cpl.cmpl_stat(),
+                        cpl.byte_cnt(),
+                    )
+                } else {
+                    write!(f, "{} len={}", short_name, length)
+                }
+            }
+            // Messages — show msg code
+            TlpType::MsgReq | TlpType::MsgReqData => {
+                if let Ok(msg) = new_msg_req(data.clone(), &fmt) {
+                    write!(
+                        f,
+                        "{} len={} req={:04X} code={:02X}",
+                        short_name,
+                        length,
+                        msg.req_id(),
+                        msg.msg_code(),
+                    )
+                } else {
+                    write!(f, "{} len={}", short_name, length)
+                }
+            }
+            // Atomics — show via atomic req
+            TlpType::FetchAddAtomicOpReq
+            | TlpType::SwapAtomicOpReq
+            | TlpType::CompareSwapAtomicOpReq => {
+                if let Ok(ar) = new_atomic_req(self) {
+                    let op1_str = match ar.operand1() {
+                        Some(v) => format!(" op1={:X}", v),
+                        None => String::new(),
+                    };
+                    write!(
+                        f,
+                        "{} req={:04X} tag={:02X} addr={:X} op0={:X}{}",
+                        short_name,
+                        ar.req_id(),
+                        ar.tag(),
+                        ar.address(),
+                        ar.operand0(),
+                        op1_str,
+                    )
+                } else {
+                    write!(f, "{} len={}", short_name, length)
+                }
+            }
+            // Prefixes — just type name
+            TlpType::LocalTlpPrefix | TlpType::EndToEndTlpPrefix => {
+                write!(f, "{} len={}", short_name, length)
+            }
+        }
     }
 }
 
@@ -2006,5 +2298,156 @@ mod tests {
         assert_eq!(msg.msg_code(), 0x7F);
         assert_eq!(msg.dw3(), 0x1234_5678);
         assert_eq!(msg.dw4(), 0x9ABC_DEF0);
+    }
+
+    // ── Display tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn display_memread32() {
+        // MRd32: fmt=000 type=00000, len=1, req=0x0400, tag=0x00, addr=0x2001FF00
+        let pkt = TlpPacket::new(vec![
+            0x00, 0x00, 0x00, 0x01, // DW0: MRd32, len=1
+            0x04, 0x00, 0x00, 0x0F, // req_id=0x0400, tag=0, BE=0x0F
+            0x20, 0x01, 0xFF, 0x00, // addr32=0x2001FF00
+        ])
+        .unwrap();
+        let s = format!("{}", pkt);
+        assert_eq!(s, "MRd32 len=1 req=0400 tag=00 addr=2001FF00");
+    }
+
+    #[test]
+    fn display_memwrite64() {
+        // MWr64: fmt=011 type=00000
+        let pkt = TlpPacket::new(vec![
+            0x60, 0x00, 0x00, 0x01, // DW0: MWr64, len=1
+            0xAB, 0xCD, 0x42, 0x0F, // req_id=0xABCD, tag=0x42
+            0x00, 0x00, 0x00, 0x01, // addr64 hi
+            0x00, 0x00, 0x10, 0x00, // addr64 lo
+        ])
+        .unwrap();
+        let s = format!("{}", pkt);
+        assert!(s.starts_with("MWr64 len=1 req=ABCD tag=42 addr="));
+    }
+
+    #[test]
+    fn display_completion_with_data() {
+        // CplD: fmt=010 type=01010 → byte0 = 0x4A
+        let pkt = TlpPacket::new(vec![
+            0x4A, 0x00, 0x00, 0x01, // DW0: CplD, len=1
+            0x20, 0x01, 0x00, 0xFC, // cpl_id=0x2001, stat=0, bcm=0, bc=0x0FC
+            0x04, 0x00, 0xAB, 0x00, // req_id=0x0400, tag=0xAB, laddr=0
+        ])
+        .unwrap();
+        let s = format!("{}", pkt);
+        assert_eq!(s, "CplD len=1 cpl=2001 req=0400 tag=AB stat=0 bc=252");
+    }
+
+    #[test]
+    fn display_config_type0_read() {
+        // CfgRd0: fmt=000 type=00100 → byte0 = 0x04
+        let pkt = TlpPacket::new(vec![
+            0x04, 0x00, 0x00, 0x01, // DW0: CfgRd0, len=1
+            0x04, 0x00, 0x00, 0x0F, // req_id=0x0400, tag=0, BE=0x0F
+            0x01, 0x08, 0x01, 0x00, // bus=1, dev=1, fn=0, reg=1
+        ])
+        .unwrap();
+        let s = format!("{}", pkt);
+        assert!(s.starts_with("CfgRd0 len=1 req=0400"));
+        assert!(s.contains("bus=01"));
+    }
+
+    #[test]
+    fn display_fetchadd_3dw() {
+        let pkt = TlpPacket::new(vec![
+            0x4C, 0x00, 0x00, 0x00, // DW0: FetchAdd 3DW
+            0xDE, 0xAD, 0x42, 0x00, // req_id=0xDEAD, tag=0x42
+            0xC0, 0x01, 0x00, 0x04, // addr32=0xC0010004
+            0x00, 0x00, 0x00, 0x0A, // addend=10
+        ])
+        .unwrap();
+        let s = format!("{}", pkt);
+        assert_eq!(s, "FetchAdd32 req=DEAD tag=42 addr=C0010004 op0=A");
+    }
+
+    #[test]
+    fn display_cas_4dw() {
+        let pkt = TlpPacket::new(vec![
+            0x6E, 0x00, 0x00, 0x00, // DW0: CAS 4DW (fmt=011 type=01110)
+            0x12, 0x34, 0xAA, 0x00, // req_id=0x1234, tag=0xAA
+            0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, // addr64
+            0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02, // compare
+            0x03, 0x03, 0x03, 0x03, 0x04, 0x04, 0x04, 0x04, // swap
+        ])
+        .unwrap();
+        let s = format!("{}", pkt);
+        assert!(s.starts_with("CAS64 req=1234 tag=AA addr="));
+        assert!(s.contains("op1="));
+    }
+
+    // ── TryFrom / FromStr tests ──────────────────────────────────────────────
+
+    #[test]
+    fn try_from_slice() {
+        let bytes = [0x00u8, 0x00, 0x20, 0x01, 0x04, 0x00, 0x00, 0x01];
+        let pkt = TlpPacket::try_from(bytes.as_slice()).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+    }
+
+    #[test]
+    fn try_from_slice_short() {
+        let bytes = [0x00u8, 0x00, 0x00];
+        assert!(matches!(
+            TlpPacket::try_from(bytes.as_slice()),
+            Err(TlpError::InvalidLength)
+        ));
+    }
+
+    #[test]
+    fn from_str_with_spaces() {
+        let pkt: TlpPacket = "00 00 20 01 04 00 00 01".parse().unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+    }
+
+    #[test]
+    fn from_str_no_spaces() {
+        let pkt: TlpPacket = "0000200104000001".parse().unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+    }
+
+    #[test]
+    fn from_str_invalid_hex() {
+        let result = "ZZZZ".parse::<TlpPacket>();
+        assert!(matches!(result, Err(TlpError::InvalidHex)));
+    }
+
+    #[test]
+    fn from_str_odd_length() {
+        let result = "000".parse::<TlpPacket>();
+        assert!(matches!(result, Err(TlpError::InvalidHex)));
+    }
+
+    #[test]
+    fn from_str_too_short() {
+        let result = "000000".parse::<TlpPacket>();
+        assert!(matches!(result, Err(TlpError::InvalidLength)));
+    }
+
+    // ── TlpError Display ────────────────────────────────────────────────────
+
+    #[test]
+    fn error_display() {
+        assert_eq!(format!("{}", TlpError::InvalidLength), "input too short");
+        assert_eq!(format!("{}", TlpError::InvalidHex), "invalid hex string");
+    }
+
+    // ── raw_bytes round-trip ────────────────────────────────────────────────
+
+    #[test]
+    fn raw_bytes_round_trip() {
+        let original = vec![
+            0x00, 0x00, 0x20, 0x01, 0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00,
+        ];
+        let pkt = TlpPacket::new(original.clone()).unwrap();
+        assert_eq!(pkt.raw_bytes(), original);
     }
 }
