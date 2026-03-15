@@ -1,3 +1,12 @@
+//! Non-Flit Mode Integration Tests (PCIe 1.0 – 5.0)
+//!
+//! Scope: functional behavior of the library when using `TlpMode::NonFlit`.
+//! Every `TlpPacket::new` and `TlpPacketHeader::new` call in this file must
+//! pass `TlpMode::NonFlit` explicitly.
+//!
+//! For flit mode (PCIe 6.x) tests see `tests/flit_mode_tests.rs`.
+//! For API surface / stability tests see `tests/api_tests.rs`.
+
 use rtlp_lib::*;
 
 // ── helpers ───────────────────────────────────────────────────────────────
