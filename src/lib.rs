@@ -1842,6 +1842,40 @@ mod tests {
         assert!(!TlpType::CplDataLocked.is_non_posted());
     }
 
+    /// Exhaustive is_non_posted() coverage: all 21 TlpType variants explicitly listed.
+    /// A spec change to non-posted semantics will immediately fail the relevant assertion.
+    #[test]
+    fn is_non_posted_exhaustive_all_21_variants() {
+        // --- Non-posted (require a Completion) ---
+        assert!(TlpType::MemReadReq.is_non_posted(),          "MemReadReq must be non-posted");
+        assert!(TlpType::MemReadLockReq.is_non_posted(),      "MemReadLockReq must be non-posted");
+        assert!(TlpType::IOReadReq.is_non_posted(),           "IOReadReq must be non-posted");
+        assert!(TlpType::IOWriteReq.is_non_posted(),          "IOWriteReq must be non-posted");
+        assert!(TlpType::ConfType0ReadReq.is_non_posted(),    "ConfType0ReadReq must be non-posted");
+        assert!(TlpType::ConfType0WriteReq.is_non_posted(),   "ConfType0WriteReq must be non-posted");
+        assert!(TlpType::ConfType1ReadReq.is_non_posted(),    "ConfType1ReadReq must be non-posted");
+        assert!(TlpType::ConfType1WriteReq.is_non_posted(),   "ConfType1WriteReq must be non-posted");
+        assert!(TlpType::FetchAddAtomicOpReq.is_non_posted(), "FetchAddAtomicOpReq must be non-posted");
+        assert!(TlpType::SwapAtomicOpReq.is_non_posted(),     "SwapAtomicOpReq must be non-posted");
+        assert!(TlpType::CompareSwapAtomicOpReq.is_non_posted(), "CompareSwapAtomicOpReq must be non-posted");
+        assert!(TlpType::DeferrableMemWriteReq.is_non_posted(), "DeferrableMemWriteReq must be non-posted");
+
+        // --- Posted (no Completion expected) ---
+        assert!(!TlpType::MemWriteReq.is_non_posted(),        "MemWriteReq is posted");
+        assert!(!TlpType::MsgReq.is_non_posted(),             "MsgReq is posted");
+        assert!(!TlpType::MsgReqData.is_non_posted(),         "MsgReqData is posted");
+
+        // --- Completions (responses, not requests) ---
+        assert!(!TlpType::Cpl.is_non_posted(),                "Cpl is a response, not a request");
+        assert!(!TlpType::CplData.is_non_posted(),            "CplData is a response, not a request");
+        assert!(!TlpType::CplLocked.is_non_posted(),          "CplLocked is a response, not a request");
+        assert!(!TlpType::CplDataLocked.is_non_posted(),      "CplDataLocked is a response, not a request");
+
+        // --- Prefixes (not transactions) ---
+        assert!(!TlpType::LocalTlpPrefix.is_non_posted(),     "LocalTlpPrefix is not a transaction");
+        assert!(!TlpType::EndToEndTlpPrefix.is_non_posted(),  "EndToEndTlpPrefix is not a transaction");
+    }
+
     // ── atomic tier-A: real bytes through the full packet pipeline ─────────────
 
     #[test]
