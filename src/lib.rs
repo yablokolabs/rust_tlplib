@@ -1503,7 +1503,7 @@ mod tests {
         let bytes = vec![0x00, 0x00, 0x00, 0x00];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
         assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
-        assert!(pkt.get_data().is_empty());
+        assert!(pkt.data().is_empty());
     }
 
     #[test]
@@ -1512,7 +1512,7 @@ mod tests {
         let bytes = vec![0x03, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
         assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
-        assert!(pkt.get_data().is_empty()); // read request, no payload
+        assert!(pkt.data().is_empty()); // read request, no payload
     }
 
     #[test]
@@ -1526,7 +1526,7 @@ mod tests {
         ];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
         assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemWrite32));
-        assert_eq!(pkt.get_data(), vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        assert_eq!(pkt.data(), [0xDE, 0xAD, 0xBE, 0xEF]);
     }
 
     #[test]
@@ -1766,7 +1766,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
-        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+        let mr = new_mem_req(pkt.data().to_vec(), &pkt.get_tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xABCD);
         assert_eq!(mr.tag(),    0x42);
         assert_eq!(mr.address(), 0xDEAD_0000);
@@ -1784,7 +1784,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
-        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+        let mr = new_mem_req(pkt.data().to_vec(), &pkt.get_tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xBEEF);
         assert_eq!(mr.tag(),    0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
@@ -1849,7 +1849,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
         let fmt = pkt.get_tlp_format().unwrap();
-        let mr = new_mem_req(pkt.get_data(), &fmt).unwrap();
+        let mr = new_mem_req(pkt.data().to_vec(), &fmt).unwrap();
         assert_eq!(mr.req_id(),  0x1234);
         assert_eq!(mr.tag(),     0x56);
         assert_eq!(mr.address(), 0x89AB_CDEF);
@@ -1878,7 +1878,7 @@ mod tests {
         assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
         let fmt = pkt.get_tlp_format().unwrap();
-        let mr = new_mem_req(pkt.get_data(), &fmt).unwrap();
+        let mr = new_mem_req(pkt.data().to_vec(), &fmt).unwrap();
         assert_eq!(mr.req_id(),  0xBEEF);
         assert_eq!(mr.tag(),     0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
