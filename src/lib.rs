@@ -204,6 +204,9 @@ impl Display for TlpType {
 
 impl TlpType {
     /// Returns `true` for non-posted TLP types (requests that expect a Completion).
+    ///
+    /// Non-posted transactions include memory reads, I/O, configuration, atomics,
+    /// and Deferrable Memory Write. Posted writes (`MemWriteReq`, messages) return `false`.
     pub fn is_non_posted(&self) -> bool {
         matches!(self,
             TlpType::MemReadReq |
@@ -214,6 +217,23 @@ impl TlpType {
             TlpType::FetchAddAtomicOpReq | TlpType::SwapAtomicOpReq | TlpType::CompareSwapAtomicOpReq |
             TlpType::DeferrableMemWriteReq
         )
+    }
+
+    /// Returns `true` for posted TLP types (no Completion expected).
+    ///
+    /// Convenience inverse of [`TlpType::is_non_posted`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rtlp_lib::TlpType;
+    ///
+    /// assert!(TlpType::MemWriteReq.is_posted());    // posted write
+    /// assert!(TlpType::MsgReq.is_posted());         // message
+    /// assert!(!TlpType::MemReadReq.is_posted());    // non-posted
+    /// ```
+    pub fn is_posted(&self) -> bool {
+        !self.is_non_posted()
     }
 }
 
