@@ -21,12 +21,19 @@ fn mk_pkt(dw0_fmt: u8, dw0_type: u8, data: &[u8]) -> TlpPacket {
     TlpPacket::new(v, TlpMode::NonFlit).unwrap()
 }
 
+/// Structural split test: verifies that TlpPacket correctly identifies DW0 type
+/// and separates the remaining bytes into data().
+///
+/// Note: per PCIe §2.2.4, Configuration Read Requests carry **no data payload** —
+/// this packet would be invalid on a real PCIe link. The library performs structural
+/// parsing only (split at byte 4) and does not enforce semantic payload rules.
 #[test]
 fn test_tlp_packet() {
     let d = vec![0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
     let tlp = TlpPacket::new(d, TlpMode::NonFlit).unwrap();
 
     assert_eq!(tlp.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
+    // DW0 consumed as header; bytes[4..11] go into data() for downstream parsing
     assert_eq!(tlp.data(), [0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
 }
 
