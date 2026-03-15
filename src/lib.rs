@@ -753,6 +753,166 @@ pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpErro
     Ok(Box::new(AtomicReq { op, width, req_id, tag, address, operand0, operand1 }))
 }
 
+// ============================================================================
+// Flit Mode types (PCIe 6.x)
+// ============================================================================
+
+/// TLP type codes used in Flit Mode DW0 byte 0.
+///
+/// These are **completely different** from the non-flit `TlpType` encoding.
+/// In flit mode, `DW0[7:0]` is a flat 8-bit type code rather than the
+/// non-flit `Fmt[2:0] | Type[4:0]` split.
+///
+/// `#[non_exhaustive]` — future type codes will be added without breaking
+/// downstream `match` arms.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FlitTlpType {
+    /// NOP — smallest flit object, 1 DW base header, no payload.
+    Nop,
+    /// 32-bit Memory Read Request (3 DW base header, no payload despite Length field).
+    MemRead32,
+    /// UIO Memory Read — 64-bit address, 4 DW base header (PCIe 6.1+ UIO).
+    UioMemRead,
+    /// Message routed to Root Complex, no data.
+    MsgToRc,
+    /// 32-bit Memory Write Request (3 DW base header + payload).
+    MemWrite32,
+    /// I/O Write Request — requires mandatory OHC-A2.
+    IoWrite,
+    /// Type 0 Configuration Write Request — requires mandatory OHC-A3.
+    CfgWrite0,
+    /// 32-bit FetchAdd AtomicOp Request.
+    FetchAdd32,
+    /// 32-bit Compare-and-Swap AtomicOp Request (2 DW payload).
+    CompareSwap32,
+    /// 32-bit Deferrable Memory Write Request.
+    DeferrableMemWrite32,
+    /// UIO Memory Write — 64-bit address, 4 DW base header (PCIe 6.1+ UIO).
+    UioMemWrite,
+    /// Message with Data routed to Root Complex.
+    MsgDToRc,
+    /// Local TLP Prefix token (1 DW base header).
+    LocalTlpPrefix,
+}
+
+impl FlitTlpType {
+    /// Base header size in DW, **not** counting OHC extension words.
+    ///
+    /// - NOP and LocalTlpPrefix: 1 DW
+    /// - UIO types (64-bit address): 4 DW
+    /// - All other types: 3 DW
+    pub fn base_header_dw(&self) -> u8 {
+        match self {
+            FlitTlpType::Nop | FlitTlpType::LocalTlpPrefix => 1,
+            FlitTlpType::UioMemRead | FlitTlpType::UioMemWrite => 4,
+            _ => 3,
+        }
+    }
+
+    /// Returns `true` for read requests that carry **no payload** even when
+    /// the `Length` field is non-zero.
+    pub fn is_read_request(&self) -> bool {
+        matches!(self, FlitTlpType::MemRead32 | FlitTlpType::UioMemRead)
+    }
+}
+
+impl TryFrom<u8> for FlitTlpType {
+    type Error = TlpError;
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        match v {
+            0x00 => Ok(FlitTlpType::Nop),
+            0x03 => Ok(FlitTlpType::MemRead32),
+            0x22 => Ok(FlitTlpType::UioMemRead),
+            0x30 => Ok(FlitTlpType::MsgToRc),
+            0x40 => Ok(FlitTlpType::MemWrite32),
+            0x42 => Ok(FlitTlpType::IoWrite),
+            0x44 => Ok(FlitTlpType::CfgWrite0),
+            0x4C => Ok(FlitTlpType::FetchAdd32),
+            0x4E => Ok(FlitTlpType::CompareSwap32),
+            0x5B => Ok(FlitTlpType::DeferrableMemWrite32),
+            0x61 => Ok(FlitTlpType::UioMemWrite),
+            0x70 => Ok(FlitTlpType::MsgDToRc),
+            0x8D => Ok(FlitTlpType::LocalTlpPrefix),
+            _    => Err(TlpError::InvalidType),
+        }
+    }
+}
+
+/// Parsed representation of a flit-mode DW0 (first 4 bytes of a flit TLP).
+///
+/// Flit-mode DW0 layout:
+///
+/// ```text
+/// Byte 0: Type[7:0]            — flat 8-bit type code
+/// Byte 1: TC[2:0] | OHC[4:0]  — traffic class + OHC presence bitmap
+/// Byte 2: TS[2:0] | Attr[2:0] | Length[9:8]
+/// Byte 3: Length[7:0]
+/// ```
+///
+/// Use [`FlitDW0::from_dw0`] to parse from a byte slice.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FlitDW0 {
+    /// Decoded TLP type.
+    pub tlp_type: FlitTlpType,
+    /// Traffic Class (bits [2:0] of byte 1).
+    pub tc: u8,
+    /// OHC presence bitmap (bits [4:0] of byte 1).
+    /// Each set bit indicates one Optional Header Content word appended
+    /// after the base header. Use [`FlitDW0::ohc_count`] for the DW count.
+    pub ohc: u8,
+    /// Transaction Steering (bits [7:5] of byte 2).
+    pub ts: u8,
+    /// Attributes (bits [4:2] of byte 2).
+    pub attr: u8,
+    /// Payload length in DW. A value of `0` encodes 1024 DW.
+    pub length: u16,
+}
+
+impl FlitDW0 {
+    /// Parse the flit-mode DW0 from the first 4 bytes of a byte slice.
+    ///
+    /// Returns `Err(TlpError::InvalidLength)` if `b.len() < 4`.
+    /// Returns `Err(TlpError::InvalidType)` if the type code is unknown.
+    pub fn from_dw0(b: &[u8]) -> Result<Self, TlpError> {
+        if b.len() < 4 {
+            return Err(TlpError::InvalidLength);
+        }
+        let tlp_type = FlitTlpType::try_from(b[0])?;
+        let tc       = (b[1] >> 5) & 0x07;
+        let ohc      = b[1] & 0x1F;
+        let ts       = (b[2] >> 5) & 0x07;
+        let attr     = (b[2] >> 2) & 0x07;
+        let length   = (((b[2] & 0x03) as u16) << 8) | (b[3] as u16);
+        Ok(FlitDW0 { tlp_type, tc, ohc, ts, attr, length })
+    }
+
+    /// Number of OHC extension words present — popcount of [`FlitDW0::ohc`].
+    pub fn ohc_count(&self) -> u8 {
+        self.ohc.count_ones() as u8
+    }
+
+    /// Total TLP size in bytes:
+    /// `(base_header_dw + ohc_count) × 4 + payload_bytes`
+    ///
+    /// Read requests carry **no** payload bytes even when `length > 0`.
+    pub fn total_bytes(&self) -> usize {
+        let header_bytes = (self.tlp_type.base_header_dw() as usize
+            + self.ohc_count() as usize) * 4;
+        let payload_bytes = if self.tlp_type.is_read_request() {
+            0
+        } else {
+            self.length as usize * 4
+        };
+        header_bytes + payload_bytes
+    }
+}
+
+// ============================================================================
+// End of Flit Mode types
+// ============================================================================
+
 /// TLP Packet Header
 /// Contains bytes for Packet header and informations about TLP type
 pub struct TlpPacketHeader {

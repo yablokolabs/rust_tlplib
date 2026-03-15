@@ -541,6 +541,8 @@ fn api_all_expected_public_types_are_available() {
         CompletionReqDW23, MessageReqDW24,
         AtomicOp, AtomicWidth,
         new_mem_req, new_conf_req, new_cmpl_req, new_msg_req, new_atomic_req,
+        // Flit mode types (Tier 1+2)
+        FlitTlpType, FlitDW0,
     };
     
     // Use types to prevent unused warnings
@@ -566,6 +568,67 @@ fn api_all_expected_public_types_are_available() {
     let _ = new_atomic_req;
     let _: Option<AtomicOp> = None;
     let _: Option<AtomicWidth> = None;
+
+    // Flit mode public API — will fail to compile if removed or renamed
+    let _: Option<FlitTlpType> = None;
+    let _: Option<FlitDW0> = None;
+}
+
+// ============================================================================
+// FlitTlpType API Tests
+// ============================================================================
+
+#[test]
+fn flit_tlp_type_enum_has_expected_variants() {
+    let _: FlitTlpType = FlitTlpType::Nop;
+    let _: FlitTlpType = FlitTlpType::MemRead32;
+    let _: FlitTlpType = FlitTlpType::UioMemRead;
+    let _: FlitTlpType = FlitTlpType::MsgToRc;
+    let _: FlitTlpType = FlitTlpType::MemWrite32;
+    let _: FlitTlpType = FlitTlpType::IoWrite;
+    let _: FlitTlpType = FlitTlpType::CfgWrite0;
+    let _: FlitTlpType = FlitTlpType::FetchAdd32;
+    let _: FlitTlpType = FlitTlpType::CompareSwap32;
+    let _: FlitTlpType = FlitTlpType::DeferrableMemWrite32;
+    let _: FlitTlpType = FlitTlpType::UioMemWrite;
+    let _: FlitTlpType = FlitTlpType::MsgDToRc;
+    let _: FlitTlpType = FlitTlpType::LocalTlpPrefix;
+}
+
+#[test]
+fn flit_tlp_type_implements_debug_and_partialeq() {
+    assert_eq!(FlitTlpType::Nop, FlitTlpType::Nop);
+    assert_ne!(FlitTlpType::Nop, FlitTlpType::MemRead32);
+    let s = format!("{:?}", FlitTlpType::MemRead32);
+    assert!(s.contains("MemRead32"));
+}
+
+#[test]
+fn flit_tlp_type_try_from_u8_valid_type_codes() {
+    assert!(FlitTlpType::try_from(0x00u8).is_ok()); // Nop
+    assert!(FlitTlpType::try_from(0x03u8).is_ok()); // MemRead32
+    assert!(FlitTlpType::try_from(0x40u8).is_ok()); // MemWrite32
+    assert!(FlitTlpType::try_from(0x4Eu8).is_ok()); // CompareSwap32
+    assert!(FlitTlpType::try_from(0x8Du8).is_ok()); // LocalTlpPrefix
+}
+
+#[test]
+fn flit_tlp_type_try_from_u8_unknown_returns_invalid_type() {
+    assert_eq!(FlitTlpType::try_from(0xFFu8).err().unwrap(), TlpError::InvalidType);
+    assert_eq!(FlitTlpType::try_from(0x01u8).err().unwrap(), TlpError::InvalidType);
+}
+
+#[test]
+fn flit_dw0_struct_is_public_and_constructible() {
+    let dw0 = FlitDW0::from_dw0(&[0x00, 0x00, 0x00, 0x00]).unwrap();
+    let _: FlitTlpType = dw0.tlp_type;
+    let _: u8  = dw0.tc;
+    let _: u8  = dw0.ohc;
+    let _: u8  = dw0.ts;
+    let _: u8  = dw0.attr;
+    let _: u16 = dw0.length;
+    let _: u8  = dw0.ohc_count();
+    let _: usize = dw0.total_bytes();
 }
 
 // ============================================================================

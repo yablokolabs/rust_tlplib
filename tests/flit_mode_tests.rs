@@ -8,8 +8,8 @@
 //! | Tier | Status | Unlock condition |
 //! |------|--------|-----------------|
 //! | 0 | ✅ passes today | N/A — permanent stub regression guard |
-//! | 1 | `#[ignore]` | `FlitDW0` struct + `flit_dw0_from_bytes()` |
-//! | 2 | `#[ignore]` | `FlitTlpType` enum + header-size table |
+//! | 1 | ✅ passes today | `FlitDW0::from_dw0()` ← **implemented** |
+//! | 2 | ✅ passes today | `FlitTlpType::base_header_dw()` ← **implemented** |
 //! | 3 | `#[ignore]` | OHC parser + `TlpError::MissingMandatoryOhc` |
 //! | 4 | `#[ignore]` | `FlitStreamWalker` / stream iterator |
 //! | 5 | `#[ignore]` | `TlpPacket::new_flit()` fully wired |
@@ -172,8 +172,6 @@ pub const FM_LOCAL_PREFIX_ONLY: [u8; 4] = [
 // Tier 0 — Current stub behavior
 //
 // These tests PASS TODAY and act as permanent regression guards.
-// They verify that TlpMode::Flit correctly returns NotImplemented until
-// the flit parser is implemented.
 // ============================================================================
 
 #[test]
@@ -196,7 +194,6 @@ fn flit_header_new_returns_not_implemented() {
 
 #[test]
 fn flit_byte_vectors_have_correct_sizes() {
-    // Compile-time size sanity check — no parser required.
     assert_eq!(FM_NOP.len(),                 4);
     assert_eq!(FM_MRD32_MIN.len(),          12);
     assert_eq!(FM_MRD32_A1_PASID.len(),     16);
@@ -217,7 +214,6 @@ fn flit_byte_vectors_have_correct_sizes() {
 
 #[test]
 fn flit_dw0_type_bytes_are_correct() {
-    // Verify type code (byte 0) for each vector without any parser.
     assert_eq!(FM_NOP[0],               0x00, "FM_NOP type");
     assert_eq!(FM_MRD32_MIN[0],         0x03, "FM_MRD32_MIN type");
     assert_eq!(FM_MRD32_A1_PASID[0],    0x03, "FM_MRD32_A1_PASID type");
@@ -237,173 +233,240 @@ fn flit_dw0_type_bytes_are_correct() {
 
 #[test]
 fn flit_dw0_ohc_bytes_are_correct() {
-    // Verify OHC presence flag (byte 1, bits[4:0]) for vectors with OHC.
-    let ohc = |b: u8| b & 0x1F; // lower 5 bits = OHC field
+    let ohc = |b: u8| b & 0x1F;
 
-    // No OHC
     assert_eq!(ohc(FM_NOP[1]),              0x00, "FM_NOP ohc");
     assert_eq!(ohc(FM_MRD32_MIN[1]),        0x00, "FM_MRD32_MIN ohc");
     assert_eq!(ohc(FM_MWR32_MIN[1]),        0x00, "FM_MWR32_MIN ohc");
-    // OHC-A1 present (bit 0 set)
     assert_eq!(ohc(FM_MRD32_A1_PASID[1]),   0x01, "FM_MRD32_A1_PASID ohc-A1");
     assert_eq!(ohc(FM_MWR32_PARTIAL_A1[1]), 0x01, "FM_MWR32_PARTIAL_A1 ohc-A1");
-    // OHC-A2/A3 present (bit 0 set via OHC-A presence)
     assert_eq!(ohc(FM_IOWR_A2[1]),          0x01, "FM_IOWR_A2 ohc-A2");
     assert_eq!(ohc(FM_CFGWR0_A3[1]),        0x01, "FM_CFGWR0_A3 ohc-A3");
 }
 
 // ============================================================================
-// Tier 1 — Flit DW0 field extraction
-//
-// #[ignore] — pending: FlitDW0 struct and flit_dw0_from_bytes() in src/lib.rs
-//
-// Unlock: add `pub fn flit_dw0_from_bytes(b: &[u8]) -> Result<FlitDW0, TlpError>`
-//         and `pub struct FlitDW0 { tlp_type, tc, ohc, ts, attr, length }`
+// Tier 1 — Flit DW0 field extraction (FlitDW0::from_dw0)
 // ============================================================================
 
 #[test]
-#[ignore = "pending: FlitDW0 struct not yet implemented (Tier 1)"]
 fn flit_t1_nop_dw0_fields() {
-    todo!("FlitDW0::from_dw0(FM_NOP) → type=Nop, tc=0, ohc=0, length=0");
+    let dw0 = FlitDW0::from_dw0(&FM_NOP).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::Nop);
+    assert_eq!(dw0.tc,     0);
+    assert_eq!(dw0.ohc,    0);
+    assert_eq!(dw0.ts,     0);
+    assert_eq!(dw0.attr,   0);
+    assert_eq!(dw0.length, 0);
 }
 
 #[test]
-#[ignore = "pending: FlitDW0 struct not yet implemented (Tier 1)"]
 fn flit_t1_mrd32_dw0_fields() {
-    todo!("FlitDW0::from_dw0(FM_MRD32_MIN) → type=MemRead32, tc=0, ohc=0, length=1");
+    // FM_MRD32_MIN = [0x03, 0x00, 0x00, 0x01]
+    let dw0 = FlitDW0::from_dw0(&FM_MRD32_MIN).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::MemRead32);
+    assert_eq!(dw0.tc,     0);
+    assert_eq!(dw0.ohc,    0);
+    assert_eq!(dw0.length, 1); // Length field = 1 DW (but no actual payload — it's a read)
 }
 
 #[test]
-#[ignore = "pending: FlitDW0 struct not yet implemented (Tier 1)"]
 fn flit_t1_mrd32_a1_dw0_ohc_present() {
-    todo!("FlitDW0::from_dw0(FM_MRD32_A1_PASID) → ohc=0x01 (OHC-A1 bit set)");
+    // FM_MRD32_A1_PASID = [0x03, 0x01, 0x00, 0x01]
+    let dw0 = FlitDW0::from_dw0(&FM_MRD32_A1_PASID).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::MemRead32);
+    assert_eq!(dw0.ohc, 0x01); // OHC-A1 bit set
+    assert_eq!(dw0.ohc_count(), 1);
+    assert_eq!(dw0.length, 1);
 }
 
 #[test]
-#[ignore = "pending: FlitDW0 struct not yet implemented (Tier 1)"]
 fn flit_t1_mwr32_dw0_fields() {
-    todo!("FlitDW0::from_dw0(FM_MWR32_MIN) → type=MemWrite32, length=1");
+    // FM_MWR32_MIN = [0x40, 0x00, 0x00, 0x01]
+    let dw0 = FlitDW0::from_dw0(&FM_MWR32_MIN).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::MemWrite32);
+    assert_eq!(dw0.tc,     0);
+    assert_eq!(dw0.ohc,    0);
+    assert_eq!(dw0.length, 1);
 }
 
 #[test]
-#[ignore = "pending: FlitDW0 struct not yet implemented (Tier 1)"]
 fn flit_t1_uiomrd64_dw0_fields() {
-    todo!("FlitDW0::from_dw0(FM_UIOMRD64_MIN) → type=UioMemRead, length=2");
+    // FM_UIOMRD64_MIN = [0x22, 0x00, 0x00, 0x02]
+    let dw0 = FlitDW0::from_dw0(&FM_UIOMRD64_MIN).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::UioMemRead);
+    assert_eq!(dw0.ohc,    0);
+    assert_eq!(dw0.length, 2);
 }
 
 #[test]
-#[ignore = "pending: FlitDW0 struct not yet implemented (Tier 1)"]
 fn flit_t1_cas32_dw0_length_is_2() {
-    todo!("FlitDW0::from_dw0(FM_CAS32) → length=2 (2 DW payload: compare + swap)");
+    // FM_CAS32 = [0x4E, 0x00, 0x00, 0x02] — 2 DW payload (compare + swap)
+    let dw0 = FlitDW0::from_dw0(&FM_CAS32).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::CompareSwap32);
+    assert_eq!(dw0.length, 2);
+}
+
+#[test]
+fn flit_t1_unknown_type_returns_invalid_type_error() {
+    // Type code 0xFF is not in the known table
+    let bad_type = [0xFF, 0x00, 0x00, 0x00];
+    assert_eq!(
+        FlitDW0::from_dw0(&bad_type).err().unwrap(),
+        TlpError::InvalidType
+    );
+}
+
+#[test]
+fn flit_t1_short_slice_returns_invalid_length_error() {
+    assert_eq!(
+        FlitDW0::from_dw0(&[0x03, 0x00, 0x00]).err().unwrap(),
+        TlpError::InvalidLength
+    );
 }
 
 // ============================================================================
-// Tier 2 — Per-vector header + size validation
-//
-// #[ignore] — pending: FlitTlpType enum and type-to-header-size table
-//
-// Unlock: add `pub enum FlitTlpType` and a function to compute:
-//   header_bytes = (base_header_dw(type) + ohc_count) * 4
-//   total_bytes  = header_bytes + length_dw * 4
+// Tier 2 — Per-vector header + total size validation
 // ============================================================================
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_nop_sizes() {
-    todo!(
-        "FM_NOP: FlitTlpType::Nop, base_header=1DW, ohc=0, payload=0DW, total=4B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_NOP).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::Nop);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 1);
+    assert_eq!(dw0.ohc_count(), 0);
+    assert_eq!(dw0.total_bytes(), 4); // 1 DW header, no payload
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_mrd32_min_sizes() {
-    todo!(
-        "FM_MRD32_MIN: FlitTlpType::MemRead32, base=3DW, ohc=0, payload=0DW (read!), total=12B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_MRD32_MIN).unwrap();
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 0);
+    assert_eq!(dw0.length, 1);
+    // Read request: no payload bytes even though Length=1
+    assert_eq!(dw0.total_bytes(), 12);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_mrd32_a1_sizes() {
-    todo!(
-        "FM_MRD32_A1_PASID: base=3DW, ohc=1DW, payload=0DW, total=16B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_MRD32_A1_PASID).unwrap();
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 1); // OHC-A1 adds 1 DW
+    // Read: no payload. Total = (3+1)*4 = 16
+    assert_eq!(dw0.total_bytes(), 16);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_mwr32_min_sizes() {
-    todo!(
-        "FM_MWR32_MIN: base=3DW, ohc=0, payload=1DW, total=16B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_MWR32_MIN).unwrap();
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 0);
+    assert_eq!(dw0.length, 1);
+    // Write: 1 DW payload. Total = 3*4 + 1*4 = 16
+    assert_eq!(dw0.total_bytes(), 16);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_mwr32_partial_a1_sizes() {
-    todo!(
-        "FM_MWR32_PARTIAL_A1: base=3DW, ohc=1DW, payload=1DW, total=20B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_MWR32_PARTIAL_A1).unwrap();
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 1);
+    assert_eq!(dw0.length, 1);
+    // Total = (3+1)*4 + 1*4 = 20
+    assert_eq!(dw0.total_bytes(), 20);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_iowr_a2_sizes() {
-    todo!(
-        "FM_IOWR_A2: FlitTlpType::IoWrite, base=3DW, ohc=1DW, payload=1DW, total=20B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_IOWR_A2).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::IoWrite);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 1);
+    assert_eq!(dw0.length, 1);
+    assert_eq!(dw0.total_bytes(), 20);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_cfgwr0_a3_sizes() {
-    todo!(
-        "FM_CFGWR0_A3: FlitTlpType::CfgWrite0, base=3DW, ohc=1DW, payload=1DW, total=20B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_CFGWR0_A3).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::CfgWrite0);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 1);
+    assert_eq!(dw0.length, 1);
+    assert_eq!(dw0.total_bytes(), 20);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_uiomrd64_sizes() {
-    todo!(
-        "FM_UIOMRD64_MIN: FlitTlpType::UioMemRead, base=4DW, ohc=0, payload=0DW, total=16B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_UIOMRD64_MIN).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::UioMemRead);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 4); // 4DW header (64-bit address)
+    assert_eq!(dw0.ohc_count(), 0);
+    assert_eq!(dw0.length, 2);
+    // Read: no payload. Total = 4*4 = 16
+    assert_eq!(dw0.total_bytes(), 16);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_uiomwr64_sizes() {
-    todo!(
-        "FM_UIOMWR64_MIN: FlitTlpType::UioMemWrite, base=4DW, ohc=0, payload=2DW, total=24B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_UIOMWR64_MIN).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::UioMemWrite);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 4);
+    assert_eq!(dw0.ohc_count(), 0);
+    assert_eq!(dw0.length, 2);
+    // Write: 2 DW payload. Total = 4*4 + 2*4 = 24
+    assert_eq!(dw0.total_bytes(), 24);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_cas32_sizes() {
-    todo!(
-        "FM_CAS32: FlitTlpType::CompareSwap32, base=3DW, ohc=0, payload=2DW, total=20B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_CAS32).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::CompareSwap32);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 0);
+    assert_eq!(dw0.length, 2);
+    // 2 DW payload (compare + swap). Total = 3*4 + 2*4 = 20
+    assert_eq!(dw0.total_bytes(), 20);
 }
 
 #[test]
-#[ignore = "pending: FlitTlpType enum not yet implemented (Tier 2)"]
 fn flit_t2_dmwr32_type_and_sizes() {
-    todo!(
-        "FM_DMWR32: FlitTlpType::DeferrableMemWrite32, base=3DW, ohc=0, payload=1DW, total=16B"
-    );
+    let dw0 = FlitDW0::from_dw0(&FM_DMWR32).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::DeferrableMemWrite32);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 3);
+    assert_eq!(dw0.ohc_count(), 0);
+    assert_eq!(dw0.length, 1);
+    assert_eq!(dw0.total_bytes(), 16);
+}
+
+#[test]
+fn flit_t2_read_request_predicate() {
+    // MemRead32 and UioMemRead are read requests — no payload
+    assert!(FlitTlpType::MemRead32.is_read_request());
+    assert!(FlitTlpType::UioMemRead.is_read_request());
+
+    // Writes and atomics are NOT read requests
+    assert!(!FlitTlpType::MemWrite32.is_read_request());
+    assert!(!FlitTlpType::IoWrite.is_read_request());
+    assert!(!FlitTlpType::CfgWrite0.is_read_request());
+    assert!(!FlitTlpType::FetchAdd32.is_read_request());
+    assert!(!FlitTlpType::CompareSwap32.is_read_request());
+    assert!(!FlitTlpType::DeferrableMemWrite32.is_read_request());
+    assert!(!FlitTlpType::Nop.is_read_request());
+}
+
+#[test]
+fn flit_t2_local_prefix_base_header_is_1dw() {
+    let dw0 = FlitDW0::from_dw0(&FM_LOCAL_PREFIX_ONLY).unwrap();
+    assert_eq!(dw0.tlp_type, FlitTlpType::LocalTlpPrefix);
+    assert_eq!(dw0.tlp_type.base_header_dw(), 1);
+    assert_eq!(dw0.total_bytes(), 4);
 }
 
 // ============================================================================
 // Tier 3 — OHC field parsing and mandatory OHC validation
 //
 // #[ignore] — pending: OHC parser + TlpError::MissingMandatoryOhc variant
-//
-// Unlock:
-//   - `pub struct FlitOhc { a1: Option<OhcA1>, ... }`
-//   - `TlpError::MissingMandatoryOhc`
-//   - Parser enforces: IO requires OHC-A2, Config requires OHC-A3
 // ============================================================================
 
 #[test]
@@ -436,8 +499,6 @@ fn flit_t3_iowr_a2_mandatory_ohc_present() {
 #[test]
 #[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_iowr_missing_mandatory_ohc_a2() {
-    // Negative test: FM_IOWR_A2 with byte1 cleared (no OHC declared)
-    // Expected: Err(TlpError::MissingMandatoryOhc)
     let mut bad = FM_IOWR_A2.to_vec();
     bad[1] = 0x00; // clear OHC flags — mandatory OHC-A2 missing
     todo!(
@@ -457,7 +518,6 @@ fn flit_t3_cfgwr0_a3_mandatory_ohc_present() {
 #[test]
 #[ignore = "pending: OHC parser not yet implemented (Tier 3)"]
 fn flit_t3_cfgwr_missing_mandatory_ohc_a3() {
-    // Negative test: FM_CFGWR0_A3 with byte1 cleared
     let mut bad = FM_CFGWR0_A3.to_vec();
     bad[1] = 0x00; // clear OHC flags — mandatory OHC-A3 missing
     todo!(
@@ -468,21 +528,12 @@ fn flit_t3_cfgwr_missing_mandatory_ohc_a3() {
 // ============================================================================
 // Tier 4 — Packed stream walking
 //
-// #[ignore] — pending: FlitStreamWalker or equivalent iterator in src/lib.rs
-//
-// Unlock: `pub struct FlitStreamWalker<'a>` or `flit_stream_iter(bytes: &[u8])`
-//   yields `(offset: usize, FlitTlpType, total_size: usize)` for each TLP
+// #[ignore] — pending: FlitStreamWalker not yet implemented
 // ============================================================================
 
 #[test]
 #[ignore = "pending: FlitStreamWalker not yet implemented (Tier 4)"]
 fn flit_t4_stream_fragment_0_offsets() {
-    // FM_STREAM_FRAGMENT_0 contains 4 back-to-back TLPs:
-    //   offset  0 → NOP,     size  4B
-    //   offset  4 → MRd32,   size 12B
-    //   offset 16 → MWr32,   size 16B
-    //   offset 32 → UIOMRd,  size 16B
-    //   offset 48 → end
     todo!(
         "let walker = FlitStreamWalker::new(&FM_STREAM_FRAGMENT_0);
          let entries: Vec<_> = walker.collect();
@@ -497,7 +548,6 @@ fn flit_t4_stream_fragment_0_offsets() {
 #[test]
 #[ignore = "pending: FlitStreamWalker not yet implemented (Tier 4)"]
 fn flit_t4_stream_truncated_payload_error() {
-    // FM_UIOMWR64_MIN with last byte removed → total-size check must fail
     let mut truncated = FM_UIOMWR64_MIN.to_vec();
     truncated.pop();
     todo!(
@@ -508,10 +558,7 @@ fn flit_t4_stream_truncated_payload_error() {
 // ============================================================================
 // Tier 5 — End-to-end TlpMode::Flit pipeline
 //
-// #[ignore] — pending: TlpPacket::new_flit() fully wired in src/lib.rs
-//
-// Unlock: `TlpMode::Flit` no longer returns `NotImplemented`; instead calls
-//   `TlpPacket::new_flit(bytes)` which uses FlitDW0 + OHC parser.
+// #[ignore] — pending: TlpPacket::new_flit() fully wired
 // ============================================================================
 
 #[test]
@@ -519,7 +566,6 @@ fn flit_t4_stream_truncated_payload_error() {
 fn flit_t5_end_to_end_mrd32_min() {
     todo!(
         "TlpPacket::new(FM_MRD32_MIN.to_vec(), TlpMode::Flit).unwrap()
-         → get_flit_type() == FlitTlpType::MemRead32
          → get_data() is empty (read request, no payload)"
     );
 }
@@ -529,7 +575,6 @@ fn flit_t5_end_to_end_mrd32_min() {
 fn flit_t5_end_to_end_mwr32_min() {
     todo!(
         "TlpPacket::new(FM_MWR32_MIN.to_vec(), TlpMode::Flit).unwrap()
-         → get_flit_type() == FlitTlpType::MemWrite32
          → get_data() == [0xDE, 0xAD, 0xBE, 0xEF]"
     );
 }
@@ -538,9 +583,7 @@ fn flit_t5_end_to_end_mwr32_min() {
 #[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_cas32() {
     todo!(
-        "TlpPacket::new(FM_CAS32.to_vec(), TlpMode::Flit).unwrap()
-         → flit type == FlitTlpType::CompareSwap32
-         → payload == [0x11,0x11,0x11,0x11, 0x22,0x22,0x22,0x22]"
+        "payload == [0x11,0x11,0x11,0x11, 0x22,0x22,0x22,0x22]"
     );
 }
 
@@ -548,9 +591,7 @@ fn flit_t5_end_to_end_cas32() {
 #[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_dmwr32() {
     todo!(
-        "TlpPacket::new(FM_DMWR32.to_vec(), TlpMode::Flit).unwrap()
-         → flit type == FlitTlpType::DeferrableMemWrite32
-         → payload == [0xC0, 0xFF, 0xEE, 0x00]"
+        "payload == [0xC0, 0xFF, 0xEE, 0x00]"
     );
 }
 
@@ -558,9 +599,7 @@ fn flit_t5_end_to_end_dmwr32() {
 #[ignore = "pending: TlpMode::Flit not yet implemented (Tier 5)"]
 fn flit_t5_end_to_end_uiomwr64() {
     todo!(
-        "TlpPacket::new(FM_UIOMWR64_MIN.to_vec(), TlpMode::Flit).unwrap()
-         → flit type == FlitTlpType::UioMemWrite
-         → payload == [0x11,0x22,0x33,0x44, 0x55,0x66,0x77,0x88]"
+        "payload == [0x11,0x22,0x33,0x44, 0x55,0x66,0x77,0x88]"
     );
 }
 
@@ -569,7 +608,6 @@ fn flit_t5_end_to_end_uiomwr64() {
 fn flit_t5_nop_has_no_data() {
     todo!(
         "TlpPacket::new(FM_NOP.to_vec(), TlpMode::Flit).unwrap()
-         → flit type == FlitTlpType::Nop
          → get_data().is_empty()"
     );
 }
