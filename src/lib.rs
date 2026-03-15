@@ -487,13 +487,14 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// # decode(bytes).unwrap();
 /// ```
-pub fn new_mem_req(bytes: Vec<u8>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
+pub fn new_mem_req(bytes: impl Into<Vec<u8>>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
+    let bytes = bytes.into();
     match format {
-        TlpFmt::NoDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
-        TlpFmt::NoDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
+        TlpFmt::NoDataHeader3DW   => Ok(Box::new(MemRequest3DW(bytes))),
+        TlpFmt::NoDataHeader4DW   => Ok(Box::new(MemRequest4DW(bytes))),
         TlpFmt::WithDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
         TlpFmt::WithDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
-        TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
+        TlpFmt::TlpPrefix         => Err(TlpError::UnsupportedCombination),
     }
 }
 
