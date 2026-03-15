@@ -602,8 +602,7 @@ fn api_all_expected_public_types_are_available() {
     let _: Option<CompletionReqDW23<[u8; 8]>> = None;
     let _: Option<MessageReqDW24<[u8; 12]>> = None;
     
-    // Ensure factory functions exist
-    let _ = new_mem_req;
+    // new_mem_req: verified by new_mem_req_factory_exists (impl Trait prevents bare reference)
     let _ = new_conf_req;
     let _ = new_cmpl_req;
     let _ = new_msg_req;

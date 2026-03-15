@@ -926,7 +926,6 @@ impl Display for FlitTlpType {
             FlitTlpType::UioMemWrite         => "UIO Memory Write (64-bit)",
             FlitTlpType::MsgDToRc            => "Message with Data routed to RC",
             FlitTlpType::LocalTlpPrefix      => "Local TLP Prefix",
-            _                                => "Unknown FlitTlpType",
         };
         write!(f, "{name}")
     }
