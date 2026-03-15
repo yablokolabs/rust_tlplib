@@ -10,7 +10,7 @@
 //! | 0 | ✅ passes today | N/A — permanent stub regression guard |
 //! | 1 | ✅ passes today | `FlitDW0::from_dw0()` ← **implemented** |
 //! | 2 | ✅ passes today | `FlitTlpType::base_header_dw()` ← **implemented** |
-//! | 3 | `#[ignore]` | OHC parser + `TlpError::MissingMandatoryOhc` |
+//! | 3 | ✅ passes today | `FlitOhcA` + `validate_mandatory_ohc()` ← **implemented** |
 //! | 4 | `#[ignore]` | `FlitStreamWalker` / stream iterator |
 //! | 5 | `#[ignore]` | `TlpPacket::new_flit()` fully wired |
 //!

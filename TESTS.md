@@ -64,7 +64,7 @@ All calls pass `TlpMode::NonFlit` explicitly.
 **Purpose:** Ensure the public API remains stable and catch breaking changes.  
 Mode-agnostic — tests API surface only, not behavior.
 
-**Test count: 60**
+**Test count: 64**
 
 Categories:
 - `TlpError` enum — all variants including `NotImplemented`, Debug, PartialEq
@@ -91,7 +91,7 @@ Categories:
 
 **Purpose:** Test plan and byte-vector constants for PCIe 6.x flit mode TLP parsing.
 
-**Test count: 40 total (26 passing, 14 `#[ignore]`)**
+**Test count: 40 total (32 passing, 8 `#[ignore]`)**
 
 #### Tier 0 — Current stubs ✅ (5 tests — permanent regression guards)
 
@@ -109,8 +109,8 @@ Implemented: `FlitDW0::from_dw0()` in `src/lib.rs`
 #### Tier 2 — Per-vector header + size validation ✅ (13 tests — implemented)
 Implemented: `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` in `src/lib.rs`
 
-#### Tier 3 — OHC field parsing and mandatory-OHC validation `#[ignore]` (6 tests)
-Unlock: `FlitOhcA` struct + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`
+#### Tier 3 — OHC field parsing and mandatory-OHC validation ✅ (6 tests — implemented)
+Implemented: `FlitOhcA::from_bytes()` + `FlitDW0::validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`
 
 #### Tier 4 — Packed stream walking `#[ignore]` (2 tests)
 Unlock: `FlitStreamWalker` iterator in `src/lib.rs`
@@ -165,13 +165,13 @@ Tests embedded in `src/lib.rs` doc comments:
 |---|---|---|---|---|
 | Unit Tests | `src/lib.rs` | 48 | 0 | Internal implementation |
 | Non-Flit Integration | `tests/non_flit_tests.rs` | 16 | 0 | PCIe 1–5 functional behavior |
-| API Contract | `tests/api_tests.rs` | 60 | 0 | Public API stability |
-| Flit Mode | `tests/flit_mode_tests.rs` | 26 | 14 | PCIe 6.x test plan |
+| API Contract | `tests/api_tests.rs` | 64 | 0 | Public API stability |
+| Flit Mode | `tests/flit_mode_tests.rs` | 32 | 8 | PCIe 6.x test plan |
 | Doc Tests | `src/lib.rs` | 6 | 0 | Documentation examples |
-| **Total** | | **156** | **14** | |
+| **Total** | | **166** | **8** | |
 
 > `#[ignore]` tests compile but do not run by default.  
-> Run `cargo test -- --ignored` to see all pending flit mode tests (Tier 3–5).
+> Run `cargo test -- --ignored` to see all pending flit mode tests (Tier 4–5).
 
 ---
 
@@ -214,7 +214,7 @@ cargo test -- --nocapture
 2. **Mode Separation** — non-flit and flit tests are in separate files with explicit scoping
 3. **Incremental Plan** — flit mode tiers unlock as implementation lands
 4. **Documentation** — `#[ignore]` test bodies describe exactly what to implement
-5. **Always Green** — all 156 non-ignored tests pass at every commit
+5. **Always Green** — all 166 non-ignored tests pass at every commit
 
 ---
 
@@ -224,7 +224,7 @@ To remove `#[ignore]` from flit mode tests, implement in order:
 
 1. ~~**Tier 1** — `FlitDW0` struct + `flit_dw0_from_bytes()`~~ ✅ Done (v0.4.1)
 2. ~~**Tier 2** — `FlitTlpType` enum + base header size table~~ ✅ Done (v0.4.1)
-3. **Tier 3** — `FlitOhcA` struct + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`
+3. ~~**Tier 3** — `FlitOhcA` struct + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`~~ ✅ Done (v0.4.1)
 4. **Tier 4** — `FlitStreamWalker` iterator
 5. **Tier 5** — Wire `TlpMode::Flit` in `TlpPacket::new`
 6. Bump version to `0.5.0`

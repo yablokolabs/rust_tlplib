@@ -1,6 +1,6 @@
 # Flit Mode Test Plan
 
-**Status:** In progress — Tier 1+2 implemented (v0.4.1); Tier 3–5 pending  
+**Status:** In progress — Tier 1+2+3 implemented (v0.4.1); Tier 4–5 pending  
 **Target release:** 0.5.0  
 **Reference:** `docs/flit_mode_tlp_examples.md`
 
@@ -154,45 +154,39 @@ These are written and passing NOW.
 
 ---
 
-### Tier 1 — Flit DW0 field extraction `#[ignore]`
+### Tier 1 — Flit DW0 field extraction ✅ (implemented v0.4.1)
 
-Tests that decode individual fields from flit DW0 bytes.  
-Do NOT call `TlpPacket::new` — test a standalone `FlitDW0::from_dw0(bytes)` function.
+Tests that decode individual fields from flit DW0 bytes using `FlitDW0::from_dw0()`.
 
-**Test inputs:** All 15 FM_* vectors (check byte 0, 1, 2, 3 independently).
-
-**Unlock condition:** `FlitDW0` struct and `FlitDW0::from_dw0()` added to `src/lib.rs`.
+**Implemented:** `FlitDW0` struct + `FlitDW0::from_dw0()` in `src/lib.rs`.
 
 ---
 
-### Tier 2 — Per-vector header + size validation `#[ignore]`
+### Tier 2 — Per-vector header + size validation ✅ (implemented v0.4.1)
 
-Tests that each FM_* vector produces the correct:
-- `FlitTlpType`
-- base header size in bytes
-- OHC count (number of extra DW words)
-- total header size = (base + OHC) × 4 bytes
-- payload length in bytes
-- total TLP size in bytes
+Tests that each FM_* vector produces the correct type, base header size, OHC count, and total TLP size.
 
-**Unlock condition:** `FlitTlpType` enum and type-to-header-size table in `src/lib.rs`.
+**Implemented:** `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` in `src/lib.rs`.
 
 ---
 
-### Tier 3 — OHC field parsing `#[ignore]`
+### Tier 3 — OHC field parsing ✅ (implemented v0.4.1)
 
 Tests that OHC words are parsed correctly:
 
-- `FM_MRD32_A1_PASID` → OHC-A1 present, PASID=0x12345, fdwbe=0xF, ldwbe=0x0
-- `FM_MWR32_PARTIAL_A1` → OHC-A1 present, fdwbe=0x3
-- `FM_IOWR_A2` → mandatory OHC-A2 present, fdwbe=0xF
-- `FM_CFGWR0_A3` → mandatory OHC-A3 present
+- `FM_MRD32_A1_PASID` → OHC-A1 present, PASID=0x12345, fdwbe=0xF, ldwbe=0x0 ✅
+- `FM_MWR32_PARTIAL_A1` → OHC-A1 present, fdwbe=0x3 ✅
+- `FM_IOWR_A2` → mandatory OHC-A2 present, fdwbe=0xF ✅
+- `FM_CFGWR0_A3` → mandatory OHC-A3 present ✅
 
 **Negative tests** (mandatory OHC validation):
-- `FM_IOWR_A2` with byte1=0x00 → `Err(TlpError::MissingMandatoryOhc)` (new error variant needed)
-- `FM_CFGWR0_A3` with byte1=0x00 → same error
+- `FM_IOWR_A2` with byte1=0x00 → `Err(TlpError::MissingMandatoryOhc)` ✅
+- `FM_CFGWR0_A3` with byte1=0x00 → same error ✅
 
-**Unlock condition:** OHC parser + `TlpError::MissingMandatoryOhc` variant.
+**Implemented:** `FlitOhcA::from_bytes()` + `FlitDW0::validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`.
+
+> **Naming note:** The struct is `FlitOhcA` (not `FlitOhc` as originally planned) to reflect that it
+> parses the OHC-A word specifically (OHC-A1, OHC-A2, OHC-A3 share the same byte layout).
 
 ---
 
@@ -230,7 +224,7 @@ To unlock each tier, these additions to `src/lib.rs` are required:
 |---|---|---|---|
 | 1 | `FlitDW0` struct + `from_dw0()` | `pub struct FlitDW0` | ✅ v0.4.1 |
 | 2 | `FlitTlpType` enum + size table | `pub enum FlitTlpType` | ✅ v0.4.1 |
-| 3 | OHC parser + `MissingMandatoryOhc` | `pub struct FlitOhcA`, `TlpError::MissingMandatoryOhc` | 🔜 next |
+| 3 | OHC parser + `MissingMandatoryOhc` | `pub struct FlitOhcA`, `TlpError::MissingMandatoryOhc` | ✅ v0.4.1 |
 | 4 | Stream walker | `pub struct FlitStreamWalker` or iterator | pending |
 | 5 | `TlpPacket::new_flit()` | wires `TlpMode::Flit` to new parser | pending |
 
