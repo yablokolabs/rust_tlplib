@@ -953,6 +953,665 @@ impl TlpPacket {
     }
 }
 
+// ─── TLP Encoder / Builder API ──────────────────────────────────────────────
+
+/// Helper: build DW0 from format, type-encoding, and payload length (in DWs).
+///
+/// Header fields TC, TD, EP, Attr, AT, etc. default to 0.
+fn build_dw0(fmt: TlpFmt, type_enc: TlpFormatEncodingType, length: u16) -> [u8; 4] {
+    let fmt_bits = fmt as u8 & 0x7;
+    let type_bits = type_enc as u8 & 0x1f;
+    let len = length & 0x3ff;
+    [
+        (fmt_bits << 5) | type_bits, // byte0: fmt(3) | type(5)
+        0x00,                        // byte1: T9, TC, T8, Attr_b2, LN, TH — all 0
+        ((len >> 8) & 0x3) as u8,    // byte2: TD, EP, Attr, AT, Length[9:8]
+        (len & 0xff) as u8,          // byte3: Length[7:0]
+    ]
+}
+
+/// Builder for Memory Read and Write TLP packets.
+///
+/// Supports both 32-bit (3DW) and 64-bit (4DW) addressing.
+/// The format is auto-selected based on the address:
+/// - address ≤ 0xFFFF_FFFF → 3DW header
+/// - address > 0xFFFF_FFFF → 4DW header
+///
+/// For writes, call `.data()` to attach a payload.
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::{MemRequestBuilder, TlpPacket, TlpType};
+///
+/// // 32-bit memory read, 1 DW
+/// let bytes = MemRequestBuilder::new()
+///     .requester_id(0x0100)
+///     .tag(0x20)
+///     .address(0xF620_000C)
+///     .first_dw_be(0x0F)
+///     .length(1)
+///     .build();
+///
+/// let pkt = TlpPacket::new(bytes).unwrap();
+/// assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+/// ```
+pub struct MemRequestBuilder {
+    requester_id: u16,
+    tag: u8,
+    first_dw_be: u8,
+    last_dw_be: u8,
+    address: u64,
+    length: u16,
+    data: Option<Vec<u8>>,
+}
+
+impl MemRequestBuilder {
+    pub fn new() -> Self {
+        MemRequestBuilder {
+            requester_id: 0,
+            tag: 0,
+            first_dw_be: 0x0F,
+            last_dw_be: 0x00,
+            address: 0,
+            length: 0,
+            data: None,
+        }
+    }
+
+    pub fn requester_id(mut self, id: u16) -> Self {
+        self.requester_id = id;
+        self
+    }
+    pub fn tag(mut self, tag: u8) -> Self {
+        self.tag = tag;
+        self
+    }
+    pub fn first_dw_be(mut self, be: u8) -> Self {
+        self.first_dw_be = be & 0x0F;
+        self
+    }
+    pub fn last_dw_be(mut self, be: u8) -> Self {
+        self.last_dw_be = be & 0x0F;
+        self
+    }
+    pub fn address(mut self, addr: u64) -> Self {
+        self.address = addr;
+        self
+    }
+    pub fn length(mut self, len: u16) -> Self {
+        self.length = len & 0x3ff;
+        self
+    }
+    /// Attach write data payload. Setting data makes this a MemWrite.
+    pub fn data(mut self, payload: Vec<u8>) -> Self {
+        self.data = Some(payload);
+        self
+    }
+
+    /// Build the TLP packet bytes.
+    pub fn build(self) -> Vec<u8> {
+        let is_write = self.data.is_some();
+        let is_4dw = self.address > 0xFFFF_FFFF;
+
+        let fmt = match (is_write, is_4dw) {
+            (false, false) => TlpFmt::NoDataHeader3DW,
+            (false, true) => TlpFmt::NoDataHeader4DW,
+            (true, false) => TlpFmt::WithDataHeader3DW,
+            (true, true) => TlpFmt::WithDataHeader4DW,
+        };
+
+        let dw0 = build_dw0(fmt, TlpFormatEncodingType::MemoryRequest, self.length);
+        let mut pkt = Vec::from(dw0);
+
+        // DW1: requester_id(16) | tag(8) | last_dw_be(4) | first_dw_be(4)
+        pkt.push((self.requester_id >> 8) as u8);
+        pkt.push(self.requester_id as u8);
+        pkt.push(self.tag);
+        pkt.push((self.last_dw_be << 4) | self.first_dw_be);
+
+        if is_4dw {
+            // DW2-DW3: address64
+            pkt.extend_from_slice(&self.address.to_be_bytes());
+        } else {
+            // DW2: address32
+            pkt.extend_from_slice(&(self.address as u32).to_be_bytes());
+        }
+
+        if let Some(payload) = self.data {
+            pkt.extend_from_slice(&payload);
+        }
+
+        pkt
+    }
+}
+
+impl Default for MemRequestBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Builder for Configuration Read/Write TLP packets.
+///
+/// Config TLPs are always 3DW. Use `.data()` to make it a write.
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::{ConfigRequestBuilder, TlpPacket, TlpType};
+///
+/// let bytes = ConfigRequestBuilder::new()
+///     .requester_id(0x0100)
+///     .tag(0x01)
+///     .bus(0x02)
+///     .device(0x03)
+///     .function(0x00)
+///     .register(0x10)
+///     .length(1)
+///     .build();
+///
+/// let pkt = TlpPacket::new(bytes).unwrap();
+/// assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
+/// ```
+pub struct ConfigRequestBuilder {
+    requester_id: u16,
+    tag: u8,
+    first_dw_be: u8,
+    last_dw_be: u8,
+    bus: u8,
+    device: u8,
+    function: u8,
+    ext_reg: u8,
+    register: u8,
+    length: u16,
+    config_type: u8, // 0 or 1
+    data: Option<Vec<u8>>,
+}
+
+impl ConfigRequestBuilder {
+    pub fn new() -> Self {
+        ConfigRequestBuilder {
+            requester_id: 0,
+            tag: 0,
+            first_dw_be: 0x0F,
+            last_dw_be: 0x00,
+            bus: 0,
+            device: 0,
+            function: 0,
+            ext_reg: 0,
+            register: 0,
+            length: 0,
+            config_type: 0,
+            data: None,
+        }
+    }
+
+    pub fn requester_id(mut self, id: u16) -> Self {
+        self.requester_id = id;
+        self
+    }
+    pub fn tag(mut self, tag: u8) -> Self {
+        self.tag = tag;
+        self
+    }
+    pub fn first_dw_be(mut self, be: u8) -> Self {
+        self.first_dw_be = be & 0x0F;
+        self
+    }
+    pub fn last_dw_be(mut self, be: u8) -> Self {
+        self.last_dw_be = be & 0x0F;
+        self
+    }
+    pub fn bus(mut self, bus: u8) -> Self {
+        self.bus = bus;
+        self
+    }
+    pub fn device(mut self, dev: u8) -> Self {
+        self.device = dev & 0x1F;
+        self
+    }
+    pub fn function(mut self, func: u8) -> Self {
+        self.function = func & 0x07;
+        self
+    }
+    pub fn ext_register(mut self, ext: u8) -> Self {
+        self.ext_reg = ext & 0x0F;
+        self
+    }
+    pub fn register(mut self, reg: u8) -> Self {
+        self.register = reg & 0x3F;
+        self
+    }
+    pub fn length(mut self, len: u16) -> Self {
+        self.length = len & 0x3ff;
+        self
+    }
+    /// Set config type: 0 (default) or 1.
+    pub fn config_type(mut self, ct: u8) -> Self {
+        self.config_type = ct & 1;
+        self
+    }
+    /// Attach write data payload. Setting data makes this a CfgWr.
+    pub fn data(mut self, payload: Vec<u8>) -> Self {
+        self.data = Some(payload);
+        self
+    }
+
+    pub fn build(self) -> Vec<u8> {
+        let is_write = self.data.is_some();
+        let fmt = if is_write {
+            TlpFmt::WithDataHeader3DW
+        } else {
+            TlpFmt::NoDataHeader3DW
+        };
+        let type_enc = if self.config_type == 0 {
+            TlpFormatEncodingType::ConfigType0Request
+        } else {
+            TlpFormatEncodingType::ConfigType1Request
+        };
+
+        let dw0 = build_dw0(fmt, type_enc, self.length);
+        let mut pkt = Vec::from(dw0);
+
+        // DW1: requester_id(16) | tag(8) | last_dw_be(4) | first_dw_be(4)
+        pkt.push((self.requester_id >> 8) as u8);
+        pkt.push(self.requester_id as u8);
+        pkt.push(self.tag);
+        pkt.push((self.last_dw_be << 4) | self.first_dw_be);
+
+        // DW2: bus(8) | device(5) | function(3) | rsvd(4) | ext_reg(4) | register(6) | r(2)
+        pkt.push(self.bus);
+        pkt.push((self.device << 3) | self.function);
+        pkt.push((self.ext_reg << 4) | ((self.register >> 4) & 0x03));
+        pkt.push((self.register << 2) & 0xFC);
+
+        if let Some(payload) = self.data {
+            pkt.extend_from_slice(&payload);
+        }
+
+        pkt
+    }
+}
+
+impl Default for ConfigRequestBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Builder for Completion TLP packets.
+///
+/// Use `.data()` to make it a Completion with Data.
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::{CompletionBuilder, TlpPacket, TlpType};
+///
+/// let bytes = CompletionBuilder::new()
+///     .completer_id(0x2001)
+///     .requester_id(0x0400)
+///     .tag(0xAB)
+///     .byte_count(252)
+///     .lower_address(0x00)
+///     .length(1)
+///     .data(vec![0xDE, 0xAD, 0xBE, 0xEF])
+///     .build();
+///
+/// let pkt = TlpPacket::new(bytes).unwrap();
+/// assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CplData);
+/// ```
+pub struct CompletionBuilder {
+    completer_id: u16,
+    status: u8,
+    bcm: u8,
+    byte_count: u16,
+    requester_id: u16,
+    tag: u8,
+    lower_address: u8,
+    length: u16,
+    locked: bool,
+    data: Option<Vec<u8>>,
+}
+
+impl CompletionBuilder {
+    pub fn new() -> Self {
+        CompletionBuilder {
+            completer_id: 0,
+            status: 0,
+            bcm: 0,
+            byte_count: 0,
+            requester_id: 0,
+            tag: 0,
+            lower_address: 0,
+            length: 0,
+            locked: false,
+            data: None,
+        }
+    }
+
+    pub fn completer_id(mut self, id: u16) -> Self {
+        self.completer_id = id;
+        self
+    }
+    pub fn status(mut self, stat: u8) -> Self {
+        self.status = stat & 0x07;
+        self
+    }
+    pub fn bcm(mut self, bcm: u8) -> Self {
+        self.bcm = bcm & 0x01;
+        self
+    }
+    pub fn byte_count(mut self, bc: u16) -> Self {
+        self.byte_count = bc & 0xFFF;
+        self
+    }
+    pub fn requester_id(mut self, id: u16) -> Self {
+        self.requester_id = id;
+        self
+    }
+    pub fn tag(mut self, tag: u8) -> Self {
+        self.tag = tag;
+        self
+    }
+    pub fn lower_address(mut self, la: u8) -> Self {
+        self.lower_address = la & 0x7F;
+        self
+    }
+    pub fn length(mut self, len: u16) -> Self {
+        self.length = len & 0x3ff;
+        self
+    }
+    pub fn locked(mut self, locked: bool) -> Self {
+        self.locked = locked;
+        self
+    }
+    /// Attach completion data payload. Setting data makes this CplD / CplDLk.
+    pub fn data(mut self, payload: Vec<u8>) -> Self {
+        self.data = Some(payload);
+        self
+    }
+
+    pub fn build(self) -> Vec<u8> {
+        let has_data = self.data.is_some();
+        let fmt = if has_data {
+            TlpFmt::WithDataHeader3DW
+        } else {
+            TlpFmt::NoDataHeader3DW
+        };
+        let type_enc = if self.locked {
+            TlpFormatEncodingType::CompletionLocked
+        } else {
+            TlpFormatEncodingType::Completion
+        };
+
+        let dw0 = build_dw0(fmt, type_enc, self.length);
+        let mut pkt = Vec::from(dw0);
+
+        // DW1: completer_id(16) | status(3) | bcm(1) | byte_count(12)
+        pkt.push((self.completer_id >> 8) as u8);
+        pkt.push(self.completer_id as u8);
+        let stat_bcm_bc_hi =
+            (self.status << 5) | (self.bcm << 4) | ((self.byte_count >> 8) as u8 & 0x0F);
+        pkt.push(stat_bcm_bc_hi);
+        pkt.push(self.byte_count as u8);
+
+        // DW2: requester_id(16) | tag(8) | R(1) | lower_address(7)
+        pkt.push((self.requester_id >> 8) as u8);
+        pkt.push(self.requester_id as u8);
+        pkt.push(self.tag);
+        pkt.push(self.lower_address & 0x7F);
+
+        if let Some(payload) = self.data {
+            pkt.extend_from_slice(&payload);
+        }
+
+        pkt
+    }
+}
+
+impl Default for CompletionBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Builder for Message TLP packets.
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::MessageBuilder;
+///
+/// let bytes = MessageBuilder::new()
+///     .requester_id(0xABCD)
+///     .tag(0x01)
+///     .message_code(0x7F)
+///     .build();
+///
+/// // DW0 byte0: fmt=000 | type=10000 → 0x10 (Msg, NoData3DW)
+/// assert_eq!(bytes[0], 0x10);
+/// // DW1: req_id, tag, msg_code
+/// assert_eq!(&bytes[4..8], &[0xAB, 0xCD, 0x01, 0x7F]);
+/// ```
+pub struct MessageBuilder {
+    requester_id: u16,
+    tag: u8,
+    message_code: u8,
+    dw3: u32,
+    dw4: u32,
+    length: u16,
+    data: Option<Vec<u8>>,
+}
+
+impl MessageBuilder {
+    pub fn new() -> Self {
+        MessageBuilder {
+            requester_id: 0,
+            tag: 0,
+            message_code: 0,
+            dw3: 0,
+            dw4: 0,
+            length: 0,
+            data: None,
+        }
+    }
+
+    pub fn requester_id(mut self, id: u16) -> Self {
+        self.requester_id = id;
+        self
+    }
+    pub fn tag(mut self, tag: u8) -> Self {
+        self.tag = tag;
+        self
+    }
+    pub fn message_code(mut self, code: u8) -> Self {
+        self.message_code = code;
+        self
+    }
+    pub fn dw3(mut self, val: u32) -> Self {
+        self.dw3 = val;
+        self
+    }
+    pub fn dw4(mut self, val: u32) -> Self {
+        self.dw4 = val;
+        self
+    }
+    pub fn length(mut self, len: u16) -> Self {
+        self.length = len & 0x3ff;
+        self
+    }
+    /// Attach message data payload. Setting data makes this MsgD.
+    pub fn data(mut self, payload: Vec<u8>) -> Self {
+        self.data = Some(payload);
+        self
+    }
+
+    pub fn build(self) -> Vec<u8> {
+        let has_data = self.data.is_some();
+        let fmt = if has_data {
+            TlpFmt::WithDataHeader3DW
+        } else {
+            TlpFmt::NoDataHeader3DW
+        };
+
+        // Messages use type encoding 10000 (0x10) for routed-to-RC,
+        // but the existing TlpFormatEncodingType doesn't cover Message types.
+        // Messages have type field bits [4:3] varying by routing.
+        // For now, encode directly: fmt(3) | type=10xxx where xxx = routing
+        // The simplest: type = 10000 (route to Root Complex) = 0b10000 = 0x10
+        let dw0_byte0 = ((fmt as u8 & 0x7) << 5) | 0x10;
+        let len = self.length & 0x3ff;
+        let dw0 = [
+            dw0_byte0,
+            0x00,
+            ((len >> 8) & 0x3) as u8,
+            (len & 0xff) as u8,
+        ];
+        let mut pkt = Vec::from(dw0);
+
+        // DW1: requester_id(16) | tag(8) | message_code(8)
+        pkt.push((self.requester_id >> 8) as u8);
+        pkt.push(self.requester_id as u8);
+        pkt.push(self.tag);
+        pkt.push(self.message_code);
+
+        // DW2: dw3
+        pkt.extend_from_slice(&self.dw3.to_be_bytes());
+
+        // DW3: dw4
+        pkt.extend_from_slice(&self.dw4.to_be_bytes());
+
+        if let Some(payload) = self.data {
+            pkt.extend_from_slice(&payload);
+        }
+
+        pkt
+    }
+}
+
+impl Default for MessageBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Builder for Atomic Operation TLP packets (FetchAdd, Swap, CompareSwap).
+///
+/// # Examples
+///
+/// ```
+/// use rtlp_lib::{AtomicRequestBuilder, AtomicOp, TlpPacket, TlpType};
+///
+/// // 32-bit FetchAdd
+/// let bytes = AtomicRequestBuilder::new(AtomicOp::FetchAdd)
+///     .requester_id(0xDEAD)
+///     .tag(0x42)
+///     .address(0xC001_0004)
+///     .operand0(10)
+///     .build();
+///
+/// let pkt = TlpPacket::new(bytes).unwrap();
+/// assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+/// ```
+pub struct AtomicRequestBuilder {
+    op: AtomicOp,
+    requester_id: u16,
+    tag: u8,
+    address: u64,
+    operand0: u64,
+    operand1: Option<u64>,
+}
+
+impl AtomicRequestBuilder {
+    pub fn new(op: AtomicOp) -> Self {
+        AtomicRequestBuilder {
+            op,
+            requester_id: 0,
+            tag: 0,
+            address: 0,
+            operand0: 0,
+            operand1: if matches!(op, AtomicOp::CompareSwap) {
+                Some(0)
+            } else {
+                None
+            },
+        }
+    }
+
+    pub fn requester_id(mut self, id: u16) -> Self {
+        self.requester_id = id;
+        self
+    }
+    pub fn tag(mut self, tag: u8) -> Self {
+        self.tag = tag;
+        self
+    }
+    pub fn address(mut self, addr: u64) -> Self {
+        self.address = addr;
+        self
+    }
+    /// Primary operand: addend (FetchAdd), new value (Swap), compare value (CAS).
+    pub fn operand0(mut self, val: u64) -> Self {
+        self.operand0 = val;
+        self
+    }
+    /// Second operand: swap value for CompareSwap. Ignored for FetchAdd/Swap.
+    pub fn operand1(mut self, val: u64) -> Self {
+        if matches!(self.op, AtomicOp::CompareSwap) {
+            self.operand1 = Some(val);
+        }
+        self
+    }
+
+    pub fn build(self) -> Vec<u8> {
+        let is_4dw = self.address > 0xFFFF_FFFF;
+        let fmt = if is_4dw {
+            TlpFmt::WithDataHeader4DW
+        } else {
+            TlpFmt::WithDataHeader3DW
+        };
+
+        let type_enc = match self.op {
+            AtomicOp::FetchAdd => TlpFormatEncodingType::FetchAtomicOpRequest,
+            AtomicOp::Swap => TlpFormatEncodingType::UnconSwapAtomicOpRequest,
+            AtomicOp::CompareSwap => TlpFormatEncodingType::CompSwapAtomicOpRequest,
+        };
+
+        let dw0 = build_dw0(fmt, type_enc, 0);
+        let mut pkt = Vec::from(dw0);
+
+        // DW1: requester_id(16) | tag(8) | BE(8)
+        pkt.push((self.requester_id >> 8) as u8);
+        pkt.push(self.requester_id as u8);
+        pkt.push(self.tag);
+        pkt.push(0x00); // byte enables
+
+        // Address
+        if is_4dw {
+            pkt.extend_from_slice(&self.address.to_be_bytes());
+        } else {
+            pkt.extend_from_slice(&(self.address as u32).to_be_bytes());
+        }
+
+        // Operands — width matches address width
+        if is_4dw {
+            pkt.extend_from_slice(&self.operand0.to_be_bytes());
+            if let Some(op1) = self.operand1 {
+                pkt.extend_from_slice(&op1.to_be_bytes());
+            }
+        } else {
+            pkt.extend_from_slice(&(self.operand0 as u32).to_be_bytes());
+            if let Some(op1) = self.operand1 {
+                pkt.extend_from_slice(&(op1 as u32).to_be_bytes());
+            }
+        }
+
+        pkt
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2006,5 +2665,385 @@ mod tests {
         assert_eq!(msg.msg_code(), 0x7F);
         assert_eq!(msg.dw3(), 0x1234_5678);
         assert_eq!(msg.dw4(), 0x9ABC_DEF0);
+    }
+
+    // ── Encoder / Builder tests ──────────────────────────────────────────────
+
+    // ── Memory Request Builder ───────────────────────────────────────────────
+
+    #[test]
+    fn encode_memread_32bit() {
+        let bytes = MemRequestBuilder::new()
+            .requester_id(0x0400)
+            .tag(0x20)
+            .address(0xF620_000C)
+            .first_dw_be(0x0F)
+            .length(1)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::NoDataHeader3DW);
+
+        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+        assert_eq!(mr.req_id(), 0x0400);
+        assert_eq!(mr.tag(), 0x20);
+        assert_eq!(mr.address(), 0xF620_000C);
+        assert_eq!(mr.fdwbe(), 0x0F);
+    }
+
+    #[test]
+    fn encode_memread_64bit() {
+        let bytes = MemRequestBuilder::new()
+            .requester_id(0xBEEF)
+            .tag(0xA5)
+            .address(0x1_0000_0000)
+            .length(4)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemReadReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::NoDataHeader4DW);
+
+        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+        assert_eq!(mr.req_id(), 0xBEEF);
+        assert_eq!(mr.tag(), 0xA5);
+        assert_eq!(mr.address(), 0x1_0000_0000);
+    }
+
+    #[test]
+    fn encode_memwrite_32bit() {
+        let payload = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        let bytes = MemRequestBuilder::new()
+            .requester_id(0x1234)
+            .tag(0x01)
+            .address(0x8000_0000)
+            .first_dw_be(0x0F)
+            .length(1)
+            .data(payload.clone())
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemWriteReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+
+        let data = pkt.get_data();
+        // Last 4 bytes should be the payload
+        assert_eq!(&data[data.len() - 4..], &payload[..]);
+    }
+
+    #[test]
+    fn encode_memwrite_64bit() {
+        let bytes = MemRequestBuilder::new()
+            .requester_id(0xFFFF)
+            .address(0xDEAD_BEEF_0000_0000)
+            .length(1)
+            .data(vec![0x11, 0x22, 0x33, 0x44])
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MemWriteReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+    }
+
+    // ── Config Request Builder ───────────────────────────────────────────────
+
+    #[test]
+    fn encode_config_type0_read() {
+        let bytes = ConfigRequestBuilder::new()
+            .requester_id(0x0100)
+            .tag(0x01)
+            .bus(0x02)
+            .device(0x03)
+            .function(0x01)
+            .register(0x10)
+            .length(1)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
+
+        let cr = new_conf_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+        assert_eq!(cr.req_id(), 0x0100);
+        assert_eq!(cr.tag(), 0x01);
+        assert_eq!(cr.bus_nr(), 0x02);
+        assert_eq!(cr.dev_nr(), 0x03);
+        assert_eq!(cr.func_nr(), 0x01);
+        assert_eq!(cr.reg_nr(), 0x10);
+    }
+
+    #[test]
+    fn encode_config_type1_write() {
+        let bytes = ConfigRequestBuilder::new()
+            .requester_id(0x0200)
+            .config_type(1)
+            .bus(0x05)
+            .device(0x1F)
+            .register(0x3C)
+            .length(1)
+            .data(vec![0x00, 0x00, 0x01, 0x00])
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::ConfType1WriteReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+    }
+
+    // ── Completion Builder ───────────────────────────────────────────────────
+
+    #[test]
+    fn encode_completion_no_data() {
+        let bytes = CompletionBuilder::new()
+            .completer_id(0x2001)
+            .requester_id(0x0400)
+            .tag(0xAB)
+            .status(0)
+            .byte_count(0)
+            .length(0)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::Cpl);
+    }
+
+    #[test]
+    fn encode_completion_with_data() {
+        let bytes = CompletionBuilder::new()
+            .completer_id(0x2001)
+            .requester_id(0x0400)
+            .tag(0xAB)
+            .byte_count(252)
+            .lower_address(0x00)
+            .length(1)
+            .data(vec![0xDE, 0xAD, 0xBE, 0xEF])
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CplData);
+
+        let cpl = new_cmpl_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+        assert_eq!(cpl.cmpl_id(), 0x2001);
+        assert_eq!(cpl.req_id(), 0x0400);
+        assert_eq!(cpl.tag(), 0xAB);
+        assert_eq!(cpl.byte_cnt(), 252);
+        assert_eq!(cpl.cmpl_stat(), 0);
+    }
+
+    #[test]
+    fn encode_completion_locked() {
+        let bytes = CompletionBuilder::new()
+            .completer_id(0x1000)
+            .requester_id(0x2000)
+            .locked(true)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CplLocked);
+    }
+
+    // ── Message Builder ──────────────────────────────────────────────────────
+
+    #[test]
+    fn encode_message_no_data() {
+        // Note: Message type decoding is not yet implemented in get_tlp_type(),
+        // so we verify the raw byte layout directly.
+        let bytes = MessageBuilder::new()
+            .requester_id(0xABCD)
+            .tag(0x01)
+            .message_code(0x7F)
+            .build();
+
+        // DW0 byte0: fmt=000 | type=10000 → 0x10 (Msg, NoData3DW)
+        assert_eq!(bytes[0], 0x10);
+        // DW1: req_id=0xABCD, tag=0x01, msg_code=0x7F
+        assert_eq!(&bytes[4..8], &[0xAB, 0xCD, 0x01, 0x7F]);
+        // Total: 4 (DW0) + 4 (DW1) + 4 (DW2/dw3) + 4 (DW3/dw4) = 16 bytes
+        assert_eq!(bytes.len(), 16);
+    }
+
+    #[test]
+    fn encode_message_with_data() {
+        let bytes = MessageBuilder::new()
+            .requester_id(0x1234)
+            .message_code(0x42)
+            .length(1)
+            .data(vec![0x11, 0x22, 0x33, 0x44])
+            .build();
+
+        // DW0 byte0: fmt=010 | type=10000 → 0x50 (MsgD, WithData3DW)
+        assert_eq!(bytes[0], 0x50);
+        // Payload appended at end
+        assert_eq!(&bytes[bytes.len() - 4..], &[0x11, 0x22, 0x33, 0x44]);
+    }
+
+    #[test]
+    fn encode_message_dw3_dw4() {
+        let bytes = MessageBuilder::new()
+            .requester_id(0x0000)
+            .dw3(0xCAFE_BABE)
+            .dw4(0xDEAD_BEEF)
+            .build();
+
+        // DW2 (dw3) at offset 8, DW3 (dw4) at offset 12
+        assert_eq!(&bytes[8..12], &0xCAFE_BABEu32.to_be_bytes());
+        assert_eq!(&bytes[12..16], &0xDEAD_BEEFu32.to_be_bytes());
+    }
+
+    // ── Atomic Request Builder ───────────────────────────────────────────────
+
+    #[test]
+    fn encode_fetchadd_32bit() {
+        let bytes = AtomicRequestBuilder::new(AtomicOp::FetchAdd)
+            .requester_id(0xDEAD)
+            .tag(0x42)
+            .address(0xC001_0004)
+            .operand0(10)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+
+        let ar = new_atomic_req(&pkt).unwrap();
+        assert_eq!(ar.req_id(), 0xDEAD);
+        assert_eq!(ar.tag(), 0x42);
+        assert_eq!(ar.address(), 0xC001_0004);
+        assert_eq!(ar.operand0(), 10);
+        assert!(ar.operand1().is_none());
+    }
+
+    #[test]
+    fn encode_swap_64bit() {
+        let bytes = AtomicRequestBuilder::new(AtomicOp::Swap)
+            .requester_id(0xBEEF)
+            .tag(0xA5)
+            .address(0x1_0000_0000)
+            .operand0(0xDEAD_BEEF_CAFE_BABE)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
+        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+
+        let ar = new_atomic_req(&pkt).unwrap();
+        assert_eq!(ar.operand0(), 0xDEAD_BEEF_CAFE_BABE);
+        assert!(ar.operand1().is_none());
+    }
+
+    #[test]
+    fn encode_cas_32bit() {
+        let bytes = AtomicRequestBuilder::new(AtomicOp::CompareSwap)
+            .requester_id(0xABCD)
+            .tag(0x07)
+            .address(0x4000)
+            .operand0(0xCAFE_BABE)
+            .operand1(0xDEAD_BEEF)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+
+        let ar = new_atomic_req(&pkt).unwrap();
+        assert_eq!(ar.req_id(), 0xABCD);
+        assert_eq!(ar.tag(), 0x07);
+        assert_eq!(ar.address(), 0x4000);
+        assert_eq!(ar.operand0(), 0xCAFE_BABE);
+        assert_eq!(ar.operand1(), Some(0xDEAD_BEEF));
+    }
+
+    #[test]
+    fn encode_cas_64bit() {
+        let bytes = AtomicRequestBuilder::new(AtomicOp::CompareSwap)
+            .requester_id(0x1234)
+            .tag(0xAA)
+            .address(0xFFFF_FFFF_0000_0000)
+            .operand0(0x0101_0101_0202_0202)
+            .operand1(0x0303_0303_0404_0404)
+            .build();
+
+        let pkt = TlpPacket::new(bytes).unwrap();
+        let ar = new_atomic_req(&pkt).unwrap();
+        assert_eq!(ar.width(), AtomicWidth::W64);
+        assert_eq!(ar.operand0(), 0x0101_0101_0202_0202);
+        assert_eq!(ar.operand1(), Some(0x0303_0303_0404_0404));
+    }
+
+    // ── Round-trip: encode → decode → verify ─────────────────────────────────
+
+    #[test]
+    fn roundtrip_memread_32() {
+        let bytes = MemRequestBuilder::new()
+            .requester_id(0x0400)
+            .tag(0x20)
+            .address(0xF620_000C)
+            .first_dw_be(0x0F)
+            .length(1)
+            .build();
+
+        let pkt = TlpPacket::new(bytes.clone()).unwrap();
+        let mr = new_mem_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+
+        // Re-encode from decoded values
+        let bytes2 = MemRequestBuilder::new()
+            .requester_id(mr.req_id())
+            .tag(mr.tag())
+            .address(mr.address())
+            .first_dw_be(mr.fdwbe())
+            .last_dw_be(mr.ldwbe())
+            .length(pkt.get_header().get_length() as u16)
+            .build();
+
+        assert_eq!(bytes, bytes2);
+    }
+
+    #[test]
+    fn roundtrip_completion_data() {
+        let bytes = CompletionBuilder::new()
+            .completer_id(0x2001)
+            .requester_id(0x0400)
+            .tag(0xAB)
+            .byte_count(252)
+            .lower_address(0x3C)
+            .length(1)
+            .data(vec![0xDE, 0xAD, 0xBE, 0xEF])
+            .build();
+
+        let pkt = TlpPacket::new(bytes.clone()).unwrap();
+        let cpl = new_cmpl_req(pkt.get_data(), &pkt.get_tlp_format().unwrap()).unwrap();
+
+        let bytes2 = CompletionBuilder::new()
+            .completer_id(cpl.cmpl_id())
+            .requester_id(cpl.req_id())
+            .tag(cpl.tag())
+            .status(cpl.cmpl_stat())
+            .bcm(cpl.bcm())
+            .byte_count(cpl.byte_cnt())
+            .lower_address(cpl.laddr())
+            .length(pkt.get_header().get_length() as u16)
+            .data(pkt.get_data()[8..].to_vec())
+            .build();
+
+        assert_eq!(bytes, bytes2);
+    }
+
+    #[test]
+    fn roundtrip_atomic_fetchadd() {
+        let bytes = AtomicRequestBuilder::new(AtomicOp::FetchAdd)
+            .requester_id(0xDEAD)
+            .tag(0x42)
+            .address(0xC001_0004)
+            .operand0(0x0A)
+            .build();
+
+        let pkt = TlpPacket::new(bytes.clone()).unwrap();
+        let ar = new_atomic_req(&pkt).unwrap();
+
+        let bytes2 = AtomicRequestBuilder::new(ar.op())
+            .requester_id(ar.req_id())
+            .tag(ar.tag())
+            .address(ar.address())
+            .operand0(ar.operand0())
+            .build();
+
+        assert_eq!(bytes, bytes2);
     }
 }
