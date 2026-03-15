@@ -490,27 +490,31 @@ pub trait ConfigurationRequest {
     fn reg_nr(&self) -> u8;
 }
 
-/// Obtain Configuration Request trait from bytes in vector as dyn
+/// Obtain Configuration Request trait from bytes in vector as dyn.
+///
+/// **Note:** The `bytes` slice must contain the full **DW1+DW2 payload** (8 bytes).
+/// `TlpPacket::data()` returns exactly those bytes when the packet was
+/// constructed from a complete 12-byte configuration request header.
 ///
 /// # Examples
 ///
 /// ```
-/// use std::convert::TryFrom;
+/// use rtlp_lib::{TlpPacket, TlpMode, ConfigurationRequest, new_conf_req};
 ///
-/// use rtlp_lib::TlpPacket;
-/// use rtlp_lib::TlpFmt;
-/// use rtlp_lib::TlpMode;
-/// use rtlp_lib::ConfigurationRequest;
-/// use rtlp_lib::new_conf_req;
-///
-/// let bytes = vec![0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+/// // 12 bytes: DW0 (ConfType0WriteReq) + DW1 (req_id, tag, BE) + DW2 (bus/dev/func/reg)
+/// // DW0: 0x44=ConfType0WriteReq, length=1
+/// // DW1: req_id=0x0001, tag=0x00, BE=0x0F
+/// // DW2: bus=0xC2, device=0x10>>3=1, func=0, ext_reg=0, reg=4
+/// let bytes = vec![
+///     0x44, 0x00, 0x00, 0x01,  // DW0
+///     0x00, 0x01, 0x00, 0x0F,  // DW1
+///     0xC2, 0x08, 0x00, 0x10,  // DW2
+/// ];
 /// let tlp = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 ///
-/// if let Ok(tlpfmt) = tlp.get_tlp_format() {
-///     let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.get_data());
-///
-///     //println!("Configuration Request Bus: {:x}", config_req.bus_nr());
-/// }
+/// // data() returns DW1+DW2 (8 bytes) — exactly what ConfigRequest needs
+/// let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.data().to_vec());
+/// assert_eq!(config_req.bus_nr(), 0xC2);
 /// ```
 pub fn new_conf_req(bytes: Vec<u8>) -> Box<dyn ConfigurationRequest> {
 	Box::new(ConfigRequest(bytes))
