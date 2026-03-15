@@ -799,9 +799,9 @@ pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpErro
         ]),
     };
 
-    let operand0 = read_operand_be(&bytes, hdr_len, width);
+    let operand0 = read_operand_be(bytes, hdr_len, width);
     let operand1 = if matches!(op, AtomicOp::CompareSwap) {
-        Some(read_operand_be(&bytes, hdr_len + op_size, width))
+        Some(read_operand_be(bytes, hdr_len + op_size, width))
     } else {
         None
     };
