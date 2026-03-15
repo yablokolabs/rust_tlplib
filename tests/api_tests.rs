@@ -450,7 +450,6 @@ fn new_mem_req_factory_exists() {
 #[test]
 fn new_conf_req_factory_exists() {
     let bytes = vec![0x04, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
-    let format = TlpFmt::NoDataHeader3DW;
     let result = new_conf_req(bytes);
     // Factory returns Box<dyn ConfigurationRequest>, verify it has the expected methods
     let _req_id = result.req_id();
@@ -460,7 +459,6 @@ fn new_conf_req_factory_exists() {
 #[test]
 fn new_cmpl_req_factory_exists() {
     let bytes = vec![0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-    let format = TlpFmt::NoDataHeader3DW;
     let result = new_cmpl_req(bytes);
     // Factory returns Box<dyn CompletionRequest>, verify it has the expected methods
     let _req_id = result.req_id();
