@@ -1430,10 +1430,18 @@ mod tests {
     #[test]
     fn test_invalid_format_error() {
         // Format field with invalid value (e.g., 0b101 = 5)
-        let invalid_fmt = TlpHeader([0xa0, 0x00, 0x00, 0x01]); // FMT='101' Type='00000'
-        let result = invalid_fmt.get_tlp_type();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), TlpError::InvalidFormat);
+        // byte0 layout: bits[7:5] = fmt, bits[4:0] = type
+        // Fmt=0b101 → byte0 = 0b1010_0000 = 0xA0
+        let invalid_fmt_101 = TlpHeader([0xa0, 0x00, 0x00, 0x01]);
+        assert_eq!(invalid_fmt_101.get_tlp_type().unwrap_err(), TlpError::InvalidFormat);
+
+        // Fmt=0b110 → byte0 = 0b1100_0000 = 0xC0
+        let invalid_fmt_110 = TlpHeader([0xc0, 0x00, 0x00, 0x01]);
+        assert_eq!(invalid_fmt_110.get_tlp_type().unwrap_err(), TlpError::InvalidFormat);
+
+        // Fmt=0b111 → byte0 = 0b1110_0000 = 0xE0
+        let invalid_fmt_111 = TlpHeader([0xe0, 0x00, 0x00, 0x01]);
+        assert_eq!(invalid_fmt_111.get_tlp_type().unwrap_err(), TlpError::InvalidFormat);
     }
 
     #[test]
