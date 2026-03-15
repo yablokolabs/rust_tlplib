@@ -540,7 +540,7 @@ fn atomic_req_returns_err_for_short_payload() {
 fn api_all_expected_public_types_are_available() {
     // This test will fail to compile if any public type is removed or renamed
     use rtlp_lib::{
-        TlpError, TlpFmt, TlpFormatEncodingType, TlpType, TlpMode,
+        TlpError, TlpFmt, TlpType, TlpMode,
         TlpPacket, TlpPacketHeader,
         MemRequest3DW, MemRequest4DW, ConfigRequest,
         CompletionReqDW23, MessageReqDW24,
@@ -553,7 +553,6 @@ fn api_all_expected_public_types_are_available() {
     // Use types to prevent unused warnings
     let _: Option<TlpError> = None;
     let _: Option<TlpFmt> = None;
-    let _: Option<TlpFormatEncodingType> = None;
     let _: Option<TlpType> = None;
     let _: Option<TlpMode> = None;
     let _: Option<TlpPacket> = None;

@@ -91,7 +91,7 @@ pub enum AtomicWidth {
 }
 
 #[derive(PartialEq)]
-pub enum TlpFormatEncodingType {
+pub(crate) enum TlpFormatEncodingType {
     MemoryRequest           = 0b00000,
     MemoryLockRequest       = 0b00001,
     IORequest               = 0b00010,
