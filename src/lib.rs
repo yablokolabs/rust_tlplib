@@ -481,12 +481,12 @@ pub trait ConfigurationRequest {
 /// let tlp = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 ///
 /// if let Ok(tlpfmt) = tlp.get_tlp_format() {
-///     let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.get_data(), &tlpfmt);
+///     let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.get_data());
 ///
 ///     //println!("Configuration Request Bus: {:x}", config_req.bus_nr());
 /// }
 /// ```
-pub fn new_conf_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn ConfigurationRequest> {
+pub fn new_conf_req(bytes: Vec<u8>) -> Box<dyn ConfigurationRequest> {
 	Box::new(ConfigRequest(bytes))
 }
 
@@ -595,11 +595,11 @@ impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
 /// // TLP Format usually comes from TlpPacket or Header here we made up one for example
 /// let tlpfmt = TlpFmt::WithDataHeader4DW;
 ///
-/// let cmpl_req: Box<dyn CompletionRequest> = new_cmpl_req(bytes, &tlpfmt);
+/// let cmpl_req: Box<dyn CompletionRequest> = new_cmpl_req(bytes);
 ///
 /// println!("Requester ID from Completion{}", cmpl_req.req_id());
 /// ```
-pub fn new_cmpl_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn CompletionRequest> {
+pub fn new_cmpl_req(bytes: Vec<u8>) -> Box<dyn CompletionRequest> {
 	Box::new(CompletionReqDW23(bytes))
 }
 
@@ -655,11 +655,11 @@ impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
 /// let bytes = vec![0x20, 0x01, 0xFF, 0xC2, 0x00, 0x00, 0x00, 0x00];
 /// let tlpfmt = TlpFmt::NoDataHeader3DW;
 ///
-/// let msg_req: Box<dyn MessageRequest> = new_msg_req(bytes, &tlpfmt);
+/// let msg_req: Box<dyn MessageRequest> = new_msg_req(bytes);
 ///
 /// println!("Requester ID from Message{}", msg_req.req_id());
 /// ```
-pub fn new_msg_req(bytes: Vec<u8>, _format: &TlpFmt) -> Box<dyn MessageRequest> {
+pub fn new_msg_req(bytes: Vec<u8>) -> Box<dyn MessageRequest> {
 	Box::new(MessageReqDW24(bytes))
 }
 
@@ -1156,13 +1156,13 @@ impl TlpPacketHeader {
 ///      TlpType::ConfType0ReadReq |
 ///      TlpType::ConfType0WriteReq |
 ///      TlpType::ConfType1ReadReq |
-///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.get_data(), &tlp_format).req_id(),
+///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.get_data()).req_id(),
 ///      TlpType::MsgReq |
-///      TlpType::MsgReqData => requester_id = new_msg_req(packet.get_data(), &tlp_format).req_id(),
+///      TlpType::MsgReqData => requester_id = new_msg_req(packet.get_data()).req_id(),
 ///      TlpType::Cpl |
 ///      TlpType::CplData |
 ///      TlpType::CplLocked |
-///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.get_data(), &tlp_format).req_id(),
+///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.get_data()).req_id(),
 ///      TlpType::LocalTlpPrefix |
 ///      TlpType::EndToEndTlpPrefix => println!("I need to implement TLP Type: {:?}", tlp_type),
 /// }
@@ -2048,7 +2048,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // completer_id, cmpl_stat, bcm, byte_cnt
             0x00, 0x00, 0x00, 0x7F, // req_id, tag, R=0, laddr=0x7F
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes);
         assert_eq!(cmpl.laddr(), 0x7F);
     }
 
@@ -2060,7 +2060,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x40,
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes);
         assert_eq!(cmpl.laddr(), 0x40);
     }
 
@@ -2072,7 +2072,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0xD5,
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes);
         assert_eq!(cmpl.laddr(), 0x55);
     }
 
@@ -2084,7 +2084,7 @@ mod tests {
             0x20, 0x01, 0x00, 0xFC, // completer_id=0x2001, status=0, bcm=0, byte_cnt=0x0FC
             0x12, 0x34, 0xAB, 0x64, // req_id=0x1234, tag=0xAB, R=0, laddr=0x64
         ];
-        let cmpl = new_cmpl_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let cmpl = new_cmpl_req(bytes);
         assert_eq!(cmpl.cmpl_id(), 0x2001);
         assert_eq!(cmpl.byte_cnt(), 0x0FC);
         assert_eq!(cmpl.req_id(), 0x1234);
@@ -2115,7 +2115,7 @@ mod tests {
             0xDE, 0xAD, 0xBE, 0xEF, // DW3
             0x00, 0x00, 0x00, 0x00, // DW4
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes);
         assert_eq!(msg.dw3(), 0xDEAD_BEEF);
     }
 
@@ -2127,7 +2127,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, // DW3
             0xCA, 0xFE, 0xBA, 0xBE, // DW4
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes);
         assert_eq!(msg.dw4(), 0xCAFE_BABE);
     }
 
@@ -2139,7 +2139,7 @@ mod tests {
             0xFF, 0xFF, 0xFF, 0xFF,
             0xFF, 0xFF, 0xFF, 0xFF,
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes);
         assert_eq!(msg.dw3(), 0xFFFF_FFFF);
         assert_eq!(msg.dw4(), 0xFFFF_FFFF);
     }
@@ -2152,7 +2152,7 @@ mod tests {
             0x12, 0x34, 0x56, 0x78,
             0x9A, 0xBC, 0xDE, 0xF0,
         ];
-        let msg = new_msg_req(bytes, &TlpFmt::NoDataHeader3DW);
+        let msg = new_msg_req(bytes);
         assert_eq!(msg.req_id(),   0xABCD);
         assert_eq!(msg.tag(),      0x42);
         assert_eq!(msg.msg_code(), 0x7F);
