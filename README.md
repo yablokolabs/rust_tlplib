@@ -226,7 +226,9 @@ See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descript
   and how to test your own code against the library.
 - **[TESTS.md](TESTS.md)** — test structure, tier descriptions, FM_* byte-vector
   constants reference, and running individual test suites.
-- **[tlp.md](tlp.md)** — PCIe TLP encoding reference with byte-level examples.
+- **[docs/tlp_reference.md](docs/tlp_reference.md)** — byte-level TLP examples for both
+  non-flit (PCIe 1–5) and flit mode (PCIe 6.x), DW0 layout diagrams, and test inventory.
+- **[tlp.md](tlp.md)** — supplementary PCIe TLP encoding reference.
 - **[docs.rs](https://docs.rs/rtlp-lib)** — published rustdoc for the released version.
 - `cargo doc --open` — rustdoc for the current local build.
 

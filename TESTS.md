@@ -109,7 +109,7 @@ Categories:
 
 **Test count: 45 total (45 passing, 0 `#[ignore]`)**
 
-#### Tier 0 — Regression guards (3 tests)
+#### Tier 0 — Regression guards (4 tests)
 
 | Test | What it checks |
 |---|---|
@@ -158,7 +158,7 @@ Includes atomic operand-value verification for `FM_FETCHADD32` (operand=0x010000
 | `FM_STREAM_FRAGMENT_0` | 48 | 4 back-to-back TLPs |
 | `FM_LOCAL_PREFIX_ONLY` | 4 | Local TLP Prefix token |
 
-For design rationale see `docs/flit_mode_test_plan.md`.
+For byte-level examples of each vector see `docs/tlp_reference.md`.
 
 ---
 
@@ -243,5 +243,5 @@ All tiers complete — no `#[ignore]` tests remain:
 4. ~~**Tier 4** — `FlitStreamWalker` iterator~~ ✅ Done (v0.5.0)
 5. ~~**Tier 5** — `TlpPacket::new_flit()` + `flit_type()`~~ ✅ Done (v0.5.0)
 
-See `docs/flit_mode_test_plan.md` for full architectural decisions and acceptance criteria.
+See `docs/tlp_reference.md` for byte-level TLP examples and the complete test inventory for both framing modes.
 
