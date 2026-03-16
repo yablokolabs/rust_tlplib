@@ -29,7 +29,9 @@ fn mk_pkt(dw0_fmt: u8, dw0_type: u8, data: &[u8]) -> TlpPacket {
 /// parsing only (split at byte 4) and does not enforce semantic payload rules.
 #[test]
 fn test_tlp_packet() {
-    let d = vec![0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
+    let d = vec![
+        0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10,
+    ];
     let tlp = TlpPacket::new(d, TlpMode::NonFlit).unwrap();
 
     assert_eq!(tlp.tlp_type().unwrap(), TlpType::ConfType0ReadReq);
@@ -75,11 +77,21 @@ fn memreq_tag_field_3dw_and_4dw() {
     assert_eq!(0x10, mr3dw3.tag());
     assert_eq!(0x81, mr3dw4.tag());
 
-    let mr4dw1 = MemRequest4DW([0x00, 0x00, 0x01, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-    let mr4dw2 = MemRequest4DW([0x00, 0x00, 0x10, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-    let mr4dw3 = MemRequest4DW([0x00, 0x00, 0x81, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-    let mr4dw4 = MemRequest4DW([0x00, 0x00, 0xFF, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
-    let mr4dw5 = MemRequest4DW([0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
+    let mr4dw1 = MemRequest4DW([
+        0x00, 0x00, 0x01, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00,
+    ]);
+    let mr4dw2 = MemRequest4DW([
+        0x00, 0x00, 0x10, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00,
+    ]);
+    let mr4dw3 = MemRequest4DW([
+        0x00, 0x00, 0x81, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00,
+    ]);
+    let mr4dw4 = MemRequest4DW([
+        0x00, 0x00, 0xFF, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00,
+    ]);
+    let mr4dw5 = MemRequest4DW([
+        0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00,
+    ]);
 
     assert_eq!(0x01, mr4dw1.tag());
     assert_eq!(0x10, mr4dw2.tag());
@@ -100,7 +112,9 @@ fn memreq_3dw_address_field() {
 #[test]
 fn memreq_4dw_address_field() {
     // DW1+DW2+DW3 bytes: address64 = 0x17FC0000000
-    let memreq_4dw = [0x00, 0x00, 0x20, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00];
+    let memreq_4dw = [
+        0x00, 0x00, 0x20, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00,
+    ];
     let mr = MemRequest4DW(memreq_4dw);
 
     assert_eq!(0x17fc0000000, mr.address());
@@ -110,7 +124,9 @@ fn memreq_4dw_address_field() {
 fn tlp_packet_header_constructs_from_bytes() {
     // MemRead32 bytes: DW0=0x00 (Fmt=000, Type=00000), TC/flags, Length=1
     // Followed by DW1+DW2 (req_id, tag, BE, address)
-    let memrd32_header = [0x00, 0x00, 0x10, 0x01, 0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
+    let memrd32_header = [
+        0x00, 0x00, 0x10, 0x01, 0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C,
+    ];
 
     let mr = TlpPacketHeader::new(memrd32_header.to_vec(), TlpMode::NonFlit).unwrap();
     assert_eq!(mr.tlp_type().unwrap(), TlpType::MemReadReq);
@@ -137,10 +153,7 @@ fn atomic_fetchadd_3dw_32_parses_operands() {
 
     // DW1+DW2 header bytes as MemRequest3DW expects:
     // req_id=0x1234, tag=0x56, address32=0x89ABCDEF
-    let hdr = [
-        0x12, 0x34, 0x56, 0x00,
-        0x89, 0xAB, 0xCD, 0xEF,
-    ];
+    let hdr = [0x12, 0x34, 0x56, 0x00, 0x89, 0xAB, 0xCD, 0xEF];
 
     // 32-bit operand (BE) = 0xDEADBEEF
     let operand = [0xDE, 0xAD, 0xBE, 0xEF];
@@ -170,13 +183,11 @@ fn atomic_swap_4dw_64_parses_operands() {
     // MemRequest4DW-like header in data:
     // req_id=0xBEEF, tag=0xA5, address64=0x1122334455667788
     let hdr = [
-        0xBE, 0xEF, 0xA5, 0x00,
-        0x11, 0x22, 0x33, 0x44,
-        0x55, 0x66, 0x77, 0x88,
+        0xBE, 0xEF, 0xA5, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
     ];
 
     // 64-bit operand = 0x0102030405060708 (BE)
-    let operand = [0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08];
+    let operand = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
 
     let mut data = Vec::new();
     data.extend_from_slice(&hdr);
@@ -201,12 +212,11 @@ fn atomic_cas_3dw_32_parses_operands() {
     const TY_ATOM_CAS: u8 = 0b01110;
 
     let hdr = [
-        0xCA, 0xFE, 0x11, 0x00,
-        0x00, 0x00, 0x10, 0x00,  // address32 = 0x00001000
+        0xCA, 0xFE, 0x11, 0x00, 0x00, 0x00, 0x10, 0x00, // address32 = 0x00001000
     ];
 
     // compare=0x11112222, swap=0x33334444
-    let payload = [0x11,0x11,0x22,0x22, 0x33,0x33,0x44,0x44];
+    let payload = [0x11, 0x11, 0x22, 0x22, 0x33, 0x33, 0x44, 0x44];
 
     let mut data = Vec::new();
     data.extend_from_slice(&hdr);
@@ -230,13 +240,10 @@ fn atomic_fetchadd_rejects_invalid_operand_length() {
     const FMT_3DW_WITH_DATA: u8 = 0b010;
     const TY_ATOM_FETCH: u8 = 0b01100;
 
-    let hdr = [
-        0x12, 0x34, 0x56, 0x00,
-        0x89, 0xAB, 0xCD, 0xEF,
-    ];
+    let hdr = [0x12, 0x34, 0x56, 0x00, 0x89, 0xAB, 0xCD, 0xEF];
 
     // 6 bytes is invalid (not 4 or 8)
-    let bad_operand = [1,2,3,4,5,6];
+    let bad_operand = [1, 2, 3, 4, 5, 6];
 
     let mut data = Vec::new();
     data.extend_from_slice(&hdr);
@@ -271,12 +278,26 @@ fn dmwr64_decode_via_tlppacket() {
 #[test]
 fn dmwr_rejects_nodata_formats() {
     // NoData 3DW: fmt=000, type=11011 → byte0 = 0x1B
-    let pkt1 = TlpPacket::new(vec![0x1B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt1.tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+    let pkt1 = TlpPacket::new(
+        vec![0x1B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        TlpMode::NonFlit,
+    )
+    .unwrap();
+    assert_eq!(
+        pkt1.tlp_type().unwrap_err(),
+        TlpError::UnsupportedCombination
+    );
 
     // NoData 4DW: fmt=001, type=11011 → byte0 = 0x3B
-    let pkt2 = TlpPacket::new(vec![0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt2.tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+    let pkt2 = TlpPacket::new(
+        vec![0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        TlpMode::NonFlit,
+    )
+    .unwrap();
+    assert_eq!(
+        pkt2.tlp_type().unwrap_err(),
+        TlpError::UnsupportedCombination
+    );
 }
 
 #[test]
@@ -293,28 +314,43 @@ fn dmwr_is_non_posted() {
 #[test]
 fn msg_req_decode_route_to_rc_3dw_no_data() {
     // Fmt=000 (3DW no data), Type=10000 (route to RC) → byte0 = 0x10
-    let pkt = TlpPacket::new(vec![0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+    let pkt = TlpPacket::new(
+        vec![0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        TlpMode::NonFlit,
+    )
+    .unwrap();
     assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReq);
 }
 
 #[test]
 fn msg_req_data_decode_route_to_rc_3dw_with_data() {
     // Fmt=010 (3DW with data), Type=10000 (route to RC) → byte0 = 0x50
-    let pkt = TlpPacket::new(vec![0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+    let pkt = TlpPacket::new(
+        vec![0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        TlpMode::NonFlit,
+    )
+    .unwrap();
     assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReqData);
 }
 
 #[test]
+#[allow(clippy::identity_op)] // 0b000 << 5 == 0 is intentional: documents the Fmt=000 field
 fn msg_req_all_six_routing_subtypes_decode() {
     // Verify all 6 message routing sub-types decode to MsgReq (no-data Fmt=000)
     // Type[4:0]: 10000=routeRC, 10001=routeAddr, 10010=routeID,
     //            10011=broadcast, 10100=local, 10101=gathered
     for routing_bits in 0b10000u8..=0b10101u8 {
         let byte0 = (0b000 << 5) | (routing_bits & 0x1f); // Fmt=000
-        let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        let pkt = TlpPacket::new(
+            vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            TlpMode::NonFlit,
+        )
+        .unwrap();
         assert_eq!(
-            pkt.tlp_type().unwrap(), TlpType::MsgReq,
-            "Routing sub-type {:#07b} should decode to MsgReq", routing_bits
+            pkt.tlp_type().unwrap(),
+            TlpType::MsgReq,
+            "Routing sub-type {:#07b} should decode to MsgReq",
+            routing_bits
         );
     }
 }
@@ -324,10 +360,16 @@ fn msg_req_data_all_six_routing_subtypes_decode() {
     // Verify all 6 routing sub-types with Fmt=010 decode to MsgReqData
     for routing_bits in 0b10000u8..=0b10101u8 {
         let byte0 = (0b010 << 5) | (routing_bits & 0x1f); // Fmt=010
-        let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        let pkt = TlpPacket::new(
+            vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            TlpMode::NonFlit,
+        )
+        .unwrap();
         assert_eq!(
-            pkt.tlp_type().unwrap(), TlpType::MsgReqData,
-            "Routing sub-type {:#07b} with WithData3DW should decode to MsgReqData", routing_bits
+            pkt.tlp_type().unwrap(),
+            TlpType::MsgReqData,
+            "Routing sub-type {:#07b} with WithData3DW should decode to MsgReqData",
+            routing_bits
         );
     }
 }
@@ -347,8 +389,8 @@ fn msg_req_end_to_end_path_with_new_msg_req() {
     assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReq);
 
     let msg = new_msg_req(pkt.data().to_vec());
-    assert_eq!(msg.req_id(),   0xBEEF);
-    assert_eq!(msg.tag(),      0xA5);
+    assert_eq!(msg.req_id(), 0xBEEF);
+    assert_eq!(msg.tag(), 0xA5);
     assert_eq!(msg.msg_code(), 0x7E);
 }
 
@@ -378,15 +420,23 @@ fn tlp_prefix_local_and_end_to_end_distinguished_by_bit4() {
     for type_bits in [0b00000u8, 0b00001, 0b00010, 0b00100, 0b01010] {
         let byte0 = (0b100u8 << 5) | (type_bits & 0x1f);
         let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-        assert_eq!(pkt.tlp_type().unwrap(), TlpType::LocalTlpPrefix,
-            "byte0={:#04x} (Type[4]=0) should be LocalTlpPrefix", byte0);
+        assert_eq!(
+            pkt.tlp_type().unwrap(),
+            TlpType::LocalTlpPrefix,
+            "byte0={:#04x} (Type[4]=0) should be LocalTlpPrefix",
+            byte0
+        );
     }
     // All Type values with bit 4=1 → EndToEndTlpPrefix
     for type_bits in [0b10000u8, 0b10001, 0b10010, 0b11011] {
         let byte0 = (0b100u8 << 5) | (type_bits & 0x1f);
         let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-        assert_eq!(pkt.tlp_type().unwrap(), TlpType::EndToEndTlpPrefix,
-            "byte0={:#04x} (Type[4]=1) should be EndToEndTlpPrefix", byte0);
+        assert_eq!(
+            pkt.tlp_type().unwrap(),
+            TlpType::EndToEndTlpPrefix,
+            "byte0={:#04x} (Type[4]=1) should be EndToEndTlpPrefix",
+            byte0
+        );
     }
 }
 
@@ -396,4 +446,3 @@ fn prefix_types_are_not_non_posted() {
     assert!(!TlpType::LocalTlpPrefix.is_non_posted());
     assert!(!TlpType::EndToEndTlpPrefix.is_non_posted());
 }
-

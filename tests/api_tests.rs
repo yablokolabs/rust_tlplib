@@ -1,8 +1,7 @@
 /// API Contract Tests
-/// 
+///
 /// These tests verify the public API surface and contracts.
 /// They should catch any breaking changes to the library's interface.
-
 use rtlp_lib::*;
 
 // ============================================================================
@@ -85,12 +84,13 @@ fn tlp_mode_enum_has_expected_variants() {
 }
 
 #[test]
+#[allow(clippy::clone_on_copy)]
 fn tlp_mode_implements_debug_clone_copy_partialeq() {
     assert_eq!(TlpMode::NonFlit, TlpMode::NonFlit);
     assert_ne!(TlpMode::NonFlit, TlpMode::Flit);
 
     let m = TlpMode::NonFlit;
-    let m2 = m;        // Copy
+    let m2 = m; // Copy
     let m3 = m.clone(); // Clone
     assert_eq!(m2, TlpMode::NonFlit);
     assert_eq!(m3, TlpMode::NonFlit);
@@ -114,7 +114,10 @@ fn tlp_mode_flit_packet_new_succeeds() {
 fn tlp_mode_flit_returns_not_implemented_for_header() {
     // TlpPacketHeader::new() with Flit still returns NotImplemented
     let bytes = vec![0x00u8; 4];
-    assert_eq!(TlpPacketHeader::new(bytes, TlpMode::Flit).err().unwrap(), TlpError::NotImplemented);
+    assert_eq!(
+        TlpPacketHeader::new(bytes, TlpMode::Flit).err().unwrap(),
+        TlpError::NotImplemented
+    );
 }
 
 // ============================================================================
@@ -157,35 +160,35 @@ fn tlp_type_enum_has_all_expected_variants() {
     let _t1: TlpType = TlpType::MemReadReq;
     let _t2: TlpType = TlpType::MemReadLockReq;
     let _t3: TlpType = TlpType::MemWriteReq;
-    
+
     // IO requests
     let _t4: TlpType = TlpType::IOReadReq;
     let _t5: TlpType = TlpType::IOWriteReq;
-    
+
     // Configuration requests
     let _t6: TlpType = TlpType::ConfType0ReadReq;
     let _t7: TlpType = TlpType::ConfType0WriteReq;
     let _t8: TlpType = TlpType::ConfType1ReadReq;
     let _t9: TlpType = TlpType::ConfType1WriteReq;
-    
+
     // Messages
     let _t10: TlpType = TlpType::MsgReq;
     let _t11: TlpType = TlpType::MsgReqData;
-    
+
     // Completions
     let _t12: TlpType = TlpType::Cpl;
     let _t13: TlpType = TlpType::CplData;
     let _t14: TlpType = TlpType::CplLocked;
     let _t15: TlpType = TlpType::CplDataLocked;
-    
+
     // Atomic operations
     let _t16: TlpType = TlpType::FetchAddAtomicOpReq;
     let _t17: TlpType = TlpType::SwapAtomicOpReq;
     let _t18: TlpType = TlpType::CompareSwapAtomicOpReq;
-    
+
     // Deferrable Memory Write
     let _t19: TlpType = TlpType::DeferrableMemWriteReq;
-    
+
     // Prefixes
     let _t20: TlpType = TlpType::LocalTlpPrefix;
     let _t21: TlpType = TlpType::EndToEndTlpPrefix;
@@ -344,7 +347,9 @@ fn memrequest_3dw_trait_methods_return_expected_types() {
 
 #[test]
 fn memrequest_4dw_trait_methods_return_expected_types() {
-    let mr = MemRequest4DW([0x00, 0x00, 0x20, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00]);
+    let mr = MemRequest4DW([
+        0x00, 0x00, 0x20, 0x0F, 0x00, 0x00, 0x01, 0x7f, 0xc0, 0x00, 0x00, 0x00,
+    ]);
     let _req_id: u16 = mr.req_id();
     let _tag: u8 = mr.tag();
     let _last_be: u8 = mr.ldwbe();
@@ -424,7 +429,9 @@ fn completion_request_trait_methods_return_expected_types() {
 
 #[test]
 fn message_request_trait_exists() {
-    let msg = MessageReqDW24([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B]);
+    let msg = MessageReqDW24([
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
+    ]);
     let _req_id = msg.req_id();
     let _msg_code = msg.msg_code();
     let _tag = msg.tag();
@@ -437,7 +444,9 @@ fn message_request_struct_is_public() {
 
 #[test]
 fn message_request_trait_methods_return_expected_types() {
-    let msg = MessageReqDW24([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B]);
+    let msg = MessageReqDW24([
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
+    ]);
     let _req_id: u16 = msg.req_id();
     let _msg_code: u8 = msg.msg_code();
     let _tag: u8 = msg.tag();
@@ -479,7 +488,9 @@ fn new_cmpl_req_factory_exists() {
 
 #[test]
 fn new_msg_req_factory_exists() {
-    let bytes = vec![0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    let bytes = vec![
+        0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
     let result = new_msg_req(bytes);
     // Factory returns Box<dyn MessageRequest>, verify it has the expected methods
     let _req_id = result.req_id();
@@ -496,13 +507,13 @@ fn new_atomic_req_factory_exists() {
     let result = new_atomic_req(&pkt);
     assert!(result.is_ok());
     let ar = result.unwrap();
-    let _op    = ar.op();
+    let _op = ar.op();
     let _width = ar.width();
-    let _rid   = ar.req_id();
-    let _tag   = ar.tag();
-    let _addr  = ar.address();
-    let _op0   = ar.operand0();
-    let _op1   = ar.operand1();
+    let _rid = ar.req_id();
+    let _tag = ar.tag();
+    let _addr = ar.address();
+    let _op0 = ar.operand0();
+    let _op1 = ar.operand1();
 }
 
 // ============================================================================
@@ -578,16 +589,30 @@ fn atomic_req_returns_err_for_short_payload() {
 fn api_all_expected_public_types_are_available() {
     // This test will fail to compile if any public type is removed or renamed
     use rtlp_lib::{
-        TlpError, TlpFmt, TlpType, TlpMode,
-        TlpPacket, TlpPacketHeader,
-        MemRequest3DW, MemRequest4DW, ConfigRequest,
-        CompletionReqDW23, MessageReqDW24,
-        AtomicOp, AtomicWidth,
-        new_mem_req, new_conf_req, new_cmpl_req, new_msg_req, new_atomic_req,
+        AtomicOp,
+        AtomicWidth,
+        CompletionReqDW23,
+        ConfigRequest,
+        FlitDW0,
+        FlitOhcA,
         // Flit mode types (Tier 1+2+3)
-        FlitTlpType, FlitDW0, FlitOhcA,
+        FlitTlpType,
+        MemRequest3DW,
+        MemRequest4DW,
+        MessageReqDW24,
+        TlpError,
+        TlpFmt,
+        TlpMode,
+        TlpPacket,
+        TlpPacketHeader,
+        TlpType,
+        new_atomic_req,
+        new_cmpl_req,
+        new_conf_req,
+        new_mem_req,
+        new_msg_req,
     };
-    
+
     // Use types to prevent unused warnings
     let _: Option<TlpError> = None;
     let _: Option<TlpFmt> = None;
@@ -601,7 +626,7 @@ fn api_all_expected_public_types_are_available() {
     let _: Option<ConfigRequest<[u8; 8]>> = None;
     let _: Option<CompletionReqDW23<[u8; 8]>> = None;
     let _: Option<MessageReqDW24<[u8; 12]>> = None;
-    
+
     // All four factory functions accept impl Into<Vec<u8>>.
     // Calling with an empty Vec<u8> satisfies inference and proves importability.
     let _ = new_mem_req(vec![0u8; 0], &TlpFmt::NoDataHeader3DW);
@@ -623,8 +648,8 @@ fn flit_ohc_a_struct_is_public_and_constructible() {
     // OHC-A word [0x01, 0x23, 0x45, 0x0F]: PASID=0x12345, fdwbe=0xF, ldwbe=0x0
     let ohc = FlitOhcA::from_bytes(&[0x01, 0x23, 0x45, 0x0F]).unwrap();
     let _: u32 = ohc.pasid;
-    let _: u8  = ohc.fdwbe;
-    let _: u8  = ohc.ldwbe;
+    let _: u8 = ohc.fdwbe;
+    let _: u8 = ohc.ldwbe;
     assert_eq!(ohc.pasid, 0x12345);
     assert_eq!(ohc.fdwbe, 0xF);
     assert_eq!(ohc.ldwbe, 0x0);
@@ -698,20 +723,26 @@ fn flit_tlp_type_try_from_u8_valid_type_codes() {
 
 #[test]
 fn flit_tlp_type_try_from_u8_unknown_returns_invalid_type() {
-    assert_eq!(FlitTlpType::try_from(0xFFu8).err().unwrap(), TlpError::InvalidType);
-    assert_eq!(FlitTlpType::try_from(0x01u8).err().unwrap(), TlpError::InvalidType);
+    assert_eq!(
+        FlitTlpType::try_from(0xFFu8).err().unwrap(),
+        TlpError::InvalidType
+    );
+    assert_eq!(
+        FlitTlpType::try_from(0x01u8).err().unwrap(),
+        TlpError::InvalidType
+    );
 }
 
 #[test]
 fn flit_dw0_struct_is_public_and_constructible() {
     let dw0 = FlitDW0::from_dw0(&[0x00, 0x00, 0x00, 0x00]).unwrap();
     let _: FlitTlpType = dw0.tlp_type;
-    let _: u8  = dw0.tc;
-    let _: u8  = dw0.ohc;
-    let _: u8  = dw0.ts;
-    let _: u8  = dw0.attr;
+    let _: u8 = dw0.tc;
+    let _: u8 = dw0.ohc;
+    let _: u8 = dw0.ts;
+    let _: u8 = dw0.attr;
     let _: u16 = dw0.length;
-    let _: u8  = dw0.ohc_count();
+    let _: u8 = dw0.ohc_count();
     let _: usize = dw0.total_bytes();
 }
 
@@ -775,7 +806,8 @@ fn deprecated_get_tlp_type_on_packet_delegates_to_tlp_type() {
     let pkt = TlpPacket::new(
         vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
         TlpMode::NonFlit,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(pkt.get_tlp_type(), pkt.tlp_type());
 }
 
@@ -785,7 +817,8 @@ fn deprecated_get_tlp_format_delegates_to_tlp_format() {
     let pkt = TlpPacket::new(
         vec![0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
         TlpMode::NonFlit,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(pkt.get_tlp_format(), pkt.tlp_format());
 }
 
@@ -802,7 +835,8 @@ fn deprecated_get_header_delegates_to_header() {
     let pkt = TlpPacket::new(
         vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
         TlpMode::NonFlit,
-    ).unwrap();
+    )
+    .unwrap();
     // Both return the same TlpPacketHeader; compare via tlp_type() since the
     // struct does not implement PartialEq.
     let via_old = pkt.get_header().tlp_type().unwrap();
@@ -813,10 +847,7 @@ fn deprecated_get_header_delegates_to_header() {
 #[test]
 #[allow(deprecated)]
 fn deprecated_get_tlp_type_on_header_delegates_to_tlp_type() {
-    let hdr = TlpPacketHeader::new(
-        vec![0x04, 0x00, 0x00, 0x01],
-        TlpMode::NonFlit,
-    ).unwrap();
+    let hdr = TlpPacketHeader::new(vec![0x04, 0x00, 0x00, 0x01], TlpMode::NonFlit).unwrap();
     assert_eq!(hdr.get_tlp_type(), hdr.tlp_type());
 }
 
@@ -829,10 +860,11 @@ fn tlp_packet_implements_debug() {
     let pkt = TlpPacket::new(
         vec![0x40, 0x00, 0x00, 0x01, 0xDE, 0xAD, 0xBE, 0xEF],
         TlpMode::NonFlit,
-    ).unwrap();
+    )
+    .unwrap();
     let s = format!("{:?}", pkt);
     assert!(s.contains("TlpPacket"), "expected 'TlpPacket' in: {s}");
-    assert!(s.contains("data_len"),  "expected 'data_len' in: {s}");
+    assert!(s.contains("data_len"), "expected 'data_len' in: {s}");
 }
 
 #[test]
@@ -840,17 +872,17 @@ fn tlp_packet_implements_debug_flit() {
     let pkt = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x00], TlpMode::Flit).unwrap();
     let s = format!("{:?}", pkt);
     assert!(s.contains("TlpPacket"), "expected 'TlpPacket' in: {s}");
-    assert!(s.contains("flit_dw0"),  "expected 'flit_dw0' in: {s}");
+    assert!(s.contains("flit_dw0"), "expected 'flit_dw0' in: {s}");
 }
 
 #[test]
 fn tlp_packet_header_implements_debug() {
-    let hdr = TlpPacketHeader::new(
-        vec![0x00, 0x00, 0x20, 0x01],
-        TlpMode::NonFlit,
-    ).unwrap();
+    let hdr = TlpPacketHeader::new(vec![0x00, 0x00, 0x20, 0x01], TlpMode::NonFlit).unwrap();
     let s = format!("{:?}", hdr);
-    assert!(s.contains("TlpPacketHeader"), "expected 'TlpPacketHeader' in: {s}");
-    assert!(s.contains("format"),          "expected 'format' in: {s}");
-    assert!(s.contains("length"),          "expected 'length' in: {s}");
+    assert!(
+        s.contains("TlpPacketHeader"),
+        "expected 'TlpPacketHeader' in: {s}"
+    );
+    assert!(s.contains("format"), "expected 'format' in: {s}");
+    assert!(s.contains("length"), "expected 'length' in: {s}");
 }

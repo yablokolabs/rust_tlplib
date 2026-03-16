@@ -52,7 +52,9 @@ impl fmt::Display for TlpError {
             TlpError::UnsupportedCombination => write!(f, "unsupported format/type combination"),
             TlpError::InvalidLength => write!(f, "byte slice too short for expected TLP fields"),
             TlpError::NotImplemented => write!(f, "feature not yet implemented"),
-            TlpError::MissingMandatoryOhc => write!(f, "mandatory OHC word missing for this TLP type"),
+            TlpError::MissingMandatoryOhc => {
+                write!(f, "mandatory OHC word missing for this TLP type")
+            }
         }
     }
 }
@@ -64,15 +66,15 @@ impl std::error::Error for TlpError {}
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TlpFmt {
     /// 3 DW header, no data payload.
-    NoDataHeader3DW     = 0b000,
+    NoDataHeader3DW = 0b000,
     /// 4 DW header, no data payload.
-    NoDataHeader4DW     = 0b001,
+    NoDataHeader4DW = 0b001,
     /// 3 DW header with data payload.
-    WithDataHeader3DW   = 0b010,
+    WithDataHeader3DW = 0b010,
     /// 4 DW header with data payload.
-    WithDataHeader4DW   = 0b011,
+    WithDataHeader4DW = 0b011,
     /// TLP Prefix (not a request or completion).
-    TlpPrefix           = 0b100,
+    TlpPrefix = 0b100,
 }
 
 impl Display for TlpFmt {
@@ -98,7 +100,7 @@ impl TryFrom<u32> for TlpFmt {
             0b010 => Ok(TlpFmt::WithDataHeader3DW),
             0b011 => Ok(TlpFmt::WithDataHeader4DW),
             0b100 => Ok(TlpFmt::TlpPrefix),
-            _     => Err(TlpError::InvalidFormat),
+            _ => Err(TlpError::InvalidFormat),
         }
     }
 }
@@ -125,20 +127,20 @@ pub enum AtomicWidth {
 
 #[derive(PartialEq)]
 pub(crate) enum TlpFormatEncodingType {
-    MemoryRequest           = 0b00000,
-    MemoryLockRequest       = 0b00001,
-    IORequest               = 0b00010,
-    ConfigType0Request      = 0b00100,
-    ConfigType1Request      = 0b00101,
-    Completion              = 0b01010,
-    CompletionLocked        = 0b01011,
-    FetchAtomicOpRequest    = 0b01100,
-    UnconSwapAtomicOpRequest= 0b01101,
+    MemoryRequest = 0b00000,
+    MemoryLockRequest = 0b00001,
+    IORequest = 0b00010,
+    ConfigType0Request = 0b00100,
+    ConfigType1Request = 0b00101,
+    Completion = 0b01010,
+    CompletionLocked = 0b01011,
+    FetchAtomicOpRequest = 0b01100,
+    UnconSwapAtomicOpRequest = 0b01101,
     CompSwapAtomicOpRequest = 0b01110,
     DeferrableMemoryWriteRequest = 0b11011,
     /// Message Request — covers all 6 routing sub-types (0b10000..=0b10101).
     /// Fmt=000/001 → MsgReq, Fmt=010/011 → MsgReqData.
-    MessageRequest          = 0b10000,
+    MessageRequest = 0b10000,
 }
 
 impl TryFrom<u32> for TlpFormatEncodingType {
@@ -160,14 +162,13 @@ impl TryFrom<u32> for TlpFormatEncodingType {
             // All message routing sub-types: route-to-RC, by-addr, by-ID,
             // broadcast, local, gathered — Type[4:3]=10, bits[2:0]=routing
             0b10000..=0b10101 => Ok(TlpFormatEncodingType::MessageRequest),
-            _       => Err(TlpError::InvalidType),
+            _ => Err(TlpError::InvalidType),
         }
     }
 }
 
 /// High-level TLP transaction type decoded from the DW0 Format and Type fields.
-#[derive(PartialEq)]
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum TlpType {
     /// 32-bit or 64-bit Memory Read Request.
     MemReadReq,
@@ -248,14 +249,20 @@ impl TlpType {
     /// Non-posted transactions include memory reads, I/O, configuration, atomics,
     /// and Deferrable Memory Write. Posted writes (`MemWriteReq`, messages) return `false`.
     pub fn is_non_posted(&self) -> bool {
-        matches!(self,
-            TlpType::MemReadReq |
-            TlpType::MemReadLockReq |
-            TlpType::IOReadReq | TlpType::IOWriteReq |
-            TlpType::ConfType0ReadReq | TlpType::ConfType0WriteReq |
-            TlpType::ConfType1ReadReq | TlpType::ConfType1WriteReq |
-            TlpType::FetchAddAtomicOpReq | TlpType::SwapAtomicOpReq | TlpType::CompareSwapAtomicOpReq |
-            TlpType::DeferrableMemWriteReq
+        matches!(
+            self,
+            TlpType::MemReadReq
+                | TlpType::MemReadLockReq
+                | TlpType::IOReadReq
+                | TlpType::IOWriteReq
+                | TlpType::ConfType0ReadReq
+                | TlpType::ConfType0WriteReq
+                | TlpType::ConfType1ReadReq
+                | TlpType::ConfType1WriteReq
+                | TlpType::FetchAddAtomicOpReq
+                | TlpType::SwapAtomicOpReq
+                | TlpType::CompareSwapAtomicOpReq
+                | TlpType::DeferrableMemWriteReq
         )
     }
 
@@ -296,7 +303,6 @@ bitfield! {
 }
 
 impl<T: AsRef<[u8]>> TlpHeader<T> {
-
     fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
         let tlp_type = self.get_type();
         let tlp_fmt = self.get_format();
@@ -312,107 +318,89 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
         }
 
         match TlpFormatEncodingType::try_from(tlp_type) {
-            Ok(TlpFormatEncodingType::MemoryRequest) => {
+            Ok(TlpFormatEncodingType::MemoryRequest) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::MemReadReq),
+                Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadReq),
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::MemWriteReq),
+                Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::MemWriteReq),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::MemoryLockRequest) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::MemReadLockReq),
+                Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadLockReq),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::IORequest) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::IOReadReq),
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::IOWriteReq),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::ConfigType0Request) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType0ReadReq),
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType0WriteReq),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::ConfigType1Request) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType1ReadReq),
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType1WriteReq),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::Completion) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::Cpl),
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplData),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::CompletionLocked) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::CplLocked),
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplDataLocked),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::FetchAtomicOpRequest) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::FetchAddAtomicOpReq),
+                Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::FetchAddAtomicOpReq),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest) => {
                 match TlpFmt::try_from(tlp_fmt) {
-                    Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::MemReadReq),
-                    Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadReq),
-                    Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::MemWriteReq),
-                    Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::MemWriteReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
+                    Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::SwapAtomicOpReq),
+                    Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::SwapAtomicOpReq),
+                    Ok(_) => Err(TlpError::UnsupportedCombination),
+                    Err(e) => Err(e),
                 }
             }
-            Ok(TlpFormatEncodingType::MemoryLockRequest) => {
+            Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CompareSwapAtomicOpReq),
+                Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::CompareSwapAtomicOpReq),
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Ok(TlpFormatEncodingType::DeferrableMemoryWriteRequest) => {
                 match TlpFmt::try_from(tlp_fmt) {
-                    Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::MemReadLockReq),
-                    Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MemReadLockReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
+                    Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::DeferrableMemWriteReq),
+                    Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::DeferrableMemWriteReq),
+                    Ok(_) => Err(TlpError::UnsupportedCombination),
+                    Err(e) => Err(e),
                 }
             }
-			Ok(TlpFormatEncodingType::IORequest) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::IOReadReq),
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::IOWriteReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			Ok(TlpFormatEncodingType::ConfigType0Request) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType0ReadReq),
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType0WriteReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-            Ok(TlpFormatEncodingType::ConfigType1Request) => {
-                    match TlpFmt::try_from(tlp_fmt) {
-                            Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::ConfType1ReadReq),
-                            Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::ConfType1WriteReq),
-                            Ok(_) => Err(TlpError::UnsupportedCombination),
-							Err(e) => Err(e),
-                    }
-            }
-			Ok(TlpFormatEncodingType::Completion) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::Cpl),
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplData),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			Ok(TlpFormatEncodingType::CompletionLocked) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::NoDataHeader3DW) => Ok(TlpType::CplLocked),
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CplDataLocked),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			Ok(TlpFormatEncodingType::FetchAtomicOpRequest) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::FetchAddAtomicOpReq),
-					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::FetchAddAtomicOpReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			Ok(TlpFormatEncodingType::UnconSwapAtomicOpRequest) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::SwapAtomicOpReq),
-					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::SwapAtomicOpReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			Ok(TlpFormatEncodingType::CompSwapAtomicOpRequest) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::CompareSwapAtomicOpReq),
-					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::CompareSwapAtomicOpReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			Ok(TlpFormatEncodingType::DeferrableMemoryWriteRequest) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::WithDataHeader3DW) => Ok(TlpType::DeferrableMemWriteReq),
-					Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::DeferrableMemWriteReq),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			// Message Requests: all 6 routing sub-types map here.
-			// Fmt=000/001 (no data) → MsgReq; Fmt=010/011 (with data) → MsgReqData.
-			Ok(TlpFormatEncodingType::MessageRequest) => {
-				match TlpFmt::try_from(tlp_fmt) {
-					Ok(TlpFmt::NoDataHeader3DW) | Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MsgReq),
-					Ok(TlpFmt::WithDataHeader3DW) | Ok(TlpFmt::WithDataHeader4DW) => Ok(TlpType::MsgReqData),
-					Ok(_) => Err(TlpError::UnsupportedCombination),
-					Err(e) => Err(e),
-				}
-			}
-			Err(e) => Err(e)
+            // Message Requests: all 6 routing sub-types map here.
+            // Fmt=000/001 (no data) → MsgReq; Fmt=010/011 (with data) → MsgReqData.
+            Ok(TlpFormatEncodingType::MessageRequest) => match TlpFmt::try_from(tlp_fmt) {
+                Ok(TlpFmt::NoDataHeader3DW) | Ok(TlpFmt::NoDataHeader4DW) => Ok(TlpType::MsgReq),
+                Ok(TlpFmt::WithDataHeader3DW) | Ok(TlpFmt::WithDataHeader4DW) => {
+                    Ok(TlpType::MsgReqData)
+                }
+                Ok(_) => Err(TlpError::UnsupportedCombination),
+                Err(e) => Err(e),
+            },
+            Err(e) => Err(e),
         }
     }
 }
@@ -436,9 +424,10 @@ pub trait MemRequest {
     fn fdwbe(&self) -> u8;
 }
 
-/// Bitfield structure for both 3DW Memory Request and Legacy IO Request headers.
+// Bitfield structure for both 3DW Memory Request and Legacy IO Request headers.
 // Structure for both 3DW Memory Request as well as Legacy IO Request
 bitfield! {
+    #[allow(missing_docs)]
     pub struct MemRequest3DW(MSB0 [u8]);
     u32;
     /// Returns the Requester ID field.
@@ -453,8 +442,9 @@ bitfield! {
     pub get_address32,      _: 63, 32;
 }
 
-/// Bitfield structure for 4DW Memory Request headers.
+// Bitfield structure for 4DW Memory Request headers.
 bitfield! {
+    #[allow(missing_docs)]
     pub struct MemRequest4DW(MSB0 [u8]);
     u64;
     /// Returns the Requester ID field.
@@ -469,7 +459,7 @@ bitfield! {
     pub get_address64,      _: 95, 32;
 }
 
-impl <T: AsRef<[u8]>> MemRequest for MemRequest3DW<T> {
+impl<T: AsRef<[u8]>> MemRequest for MemRequest3DW<T> {
     fn address(&self) -> u64 {
         self.get_address32().into()
     }
@@ -487,7 +477,7 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest3DW<T> {
     }
 }
 
-impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
+impl<T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
     fn address(&self) -> u64 {
         self.get_address64()
     }
@@ -544,14 +534,17 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// # let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 /// # decode(bytes).unwrap();
 /// ```
-pub fn new_mem_req(bytes: impl Into<Vec<u8>>, format: &TlpFmt) -> Result<Box<dyn MemRequest>, TlpError> {
+pub fn new_mem_req(
+    bytes: impl Into<Vec<u8>>,
+    format: &TlpFmt,
+) -> Result<Box<dyn MemRequest>, TlpError> {
     let bytes = bytes.into();
     match format {
-        TlpFmt::NoDataHeader3DW   => Ok(Box::new(MemRequest3DW(bytes))),
-        TlpFmt::NoDataHeader4DW   => Ok(Box::new(MemRequest4DW(bytes))),
+        TlpFmt::NoDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
+        TlpFmt::NoDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
         TlpFmt::WithDataHeader3DW => Ok(Box::new(MemRequest3DW(bytes))),
         TlpFmt::WithDataHeader4DW => Ok(Box::new(MemRequest4DW(bytes))),
-        TlpFmt::TlpPrefix         => Err(TlpError::UnsupportedCombination),
+        TlpFmt::TlpPrefix => Err(TlpError::UnsupportedCombination),
     }
 }
 
@@ -603,11 +596,12 @@ pub trait ConfigurationRequest {
 /// assert_eq!(config_req.bus_nr(), 0xC2);
 /// ```
 pub fn new_conf_req(bytes: impl Into<Vec<u8>>) -> Box<dyn ConfigurationRequest> {
-	Box::new(ConfigRequest(bytes.into()))
+    Box::new(ConfigRequest(bytes.into()))
 }
 
-/// Bitfield structure for Configuration Request headers (DW1+DW2).
+// Bitfield structure for Configuration Request headers (DW1+DW2).
 bitfield! {
+    #[allow(missing_docs)]
     pub struct ConfigRequest(MSB0 [u8]);
     u32;
     /// Returns the Requester ID field.
@@ -633,7 +627,7 @@ bitfield! {
     r,                      _: 63, 62;
 }
 
-impl <T: AsRef<[u8]>> ConfigurationRequest for ConfigRequest<T> {
+impl<T: AsRef<[u8]>> ConfigurationRequest for ConfigRequest<T> {
     fn req_id(&self) -> u16 {
         self.get_requester_id() as u16
     }
@@ -679,8 +673,9 @@ pub trait CompletionRequest {
     fn laddr(&self) -> u8;
 }
 
-/// Bitfield structure for Completion Request DW2+DW3 fields.
+// Bitfield structure for Completion Request DW2+DW3 fields.
 bitfield! {
+    #[allow(missing_docs)]
     pub struct CompletionReqDW23(MSB0 [u8]);
     u16;
     /// Returns the Completer ID field.
@@ -700,7 +695,7 @@ bitfield! {
     pub get_laddr,          _: 63, 57;
 }
 
-impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
+impl<T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
     fn cmpl_id(&self) -> u16 {
         self.get_completer_id()
     }
@@ -742,7 +737,7 @@ impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
 /// println!("Requester ID from Completion{}", cmpl_req.req_id());
 /// ```
 pub fn new_cmpl_req(bytes: impl Into<Vec<u8>>) -> Box<dyn CompletionRequest> {
-	Box::new(CompletionReqDW23(bytes.into()))
+    Box::new(CompletionReqDW23(bytes.into()))
 }
 
 /// Message Request trait
@@ -753,15 +748,16 @@ pub trait MessageRequest {
     /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
     /// Returns the 8-bit Message Code field.
-	fn msg_code(&self) -> u8;
+    fn msg_code(&self) -> u8;
     /// DW3 content — interpretation varies with Message Code.
     fn dw3(&self) -> u32;
     /// DW4 content — interpretation varies with Message Code.
     fn dw4(&self) -> u32;
 }
 
-/// Bitfield structure for Message Request DW2–DW4 fields.
+// Bitfield structure for Message Request DW2–DW4 fields.
 bitfield! {
+    #[allow(missing_docs)]
     pub struct MessageReqDW24(MSB0 [u8]);
     u32;
     /// Returns the Requester ID field.
@@ -776,7 +772,7 @@ bitfield! {
     pub get_dw4,            _: 95, 64;
 }
 
-impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
+impl<T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
     fn req_id(&self) -> u16 {
         self.get_requester_id() as u16
     }
@@ -812,7 +808,7 @@ impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
 /// println!("Requester ID from Message{}", msg_req.req_id());
 /// ```
 pub fn new_msg_req(bytes: impl Into<Vec<u8>>) -> Box<dyn MessageRequest> {
-	Box::new(MessageReqDW24(bytes.into()))
+    Box::new(MessageReqDW24(bytes.into()))
 }
 
 /// Atomic Request trait: header fields and operand(s) for atomic op TLPs.
@@ -836,31 +832,51 @@ pub trait AtomicRequest: std::fmt::Debug {
 
 #[derive(Debug)]
 struct AtomicReq {
-    op:       AtomicOp,
-    width:    AtomicWidth,
-    req_id:   u16,
-    tag:      u8,
-    address:  u64,
+    op: AtomicOp,
+    width: AtomicWidth,
+    req_id: u16,
+    tag: u8,
+    address: u64,
     operand0: u64,
     operand1: Option<u64>,
 }
 
 impl AtomicRequest for AtomicReq {
-    fn op(&self)       -> AtomicOp    { self.op }
-    fn width(&self)    -> AtomicWidth { self.width }
-    fn req_id(&self)   -> u16         { self.req_id }
-    fn tag(&self)      -> u8          { self.tag }
-    fn address(&self)  -> u64         { self.address }
-    fn operand0(&self) -> u64         { self.operand0 }
-    fn operand1(&self) -> Option<u64> { self.operand1 }
+    fn op(&self) -> AtomicOp {
+        self.op
+    }
+    fn width(&self) -> AtomicWidth {
+        self.width
+    }
+    fn req_id(&self) -> u16 {
+        self.req_id
+    }
+    fn tag(&self) -> u8 {
+        self.tag
+    }
+    fn address(&self) -> u64 {
+        self.address
+    }
+    fn operand0(&self) -> u64 {
+        self.operand0
+    }
+    fn operand1(&self) -> Option<u64> {
+        self.operand1
+    }
 }
 
 fn read_operand_be(b: &[u8], off: usize, width: AtomicWidth) -> u64 {
     match width {
-        AtomicWidth::W32 => u32::from_be_bytes([b[off], b[off+1], b[off+2], b[off+3]]) as u64,
+        AtomicWidth::W32 => u32::from_be_bytes([b[off], b[off + 1], b[off + 2], b[off + 3]]) as u64,
         AtomicWidth::W64 => u64::from_be_bytes([
-            b[off], b[off+1], b[off+2], b[off+3],
-            b[off+4], b[off+5], b[off+6], b[off+7],
+            b[off],
+            b[off + 1],
+            b[off + 2],
+            b[off + 3],
+            b[off + 4],
+            b[off + 5],
+            b[off + 6],
+            b[off + 7],
         ]),
     }
 }
@@ -896,33 +912,41 @@ fn read_operand_be(b: &[u8], off: usize, width: AtomicWidth) -> u64 {
 /// ```
 pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpError> {
     let tlp_type = pkt.tlp_type()?;
-    let format   = pkt.tlp_format()?;
-    let bytes    = pkt.data();
+    let format = pkt.tlp_format()?;
+    let bytes = pkt.data();
 
     let op = match tlp_type {
-        TlpType::FetchAddAtomicOpReq    => AtomicOp::FetchAdd,
-        TlpType::SwapAtomicOpReq        => AtomicOp::Swap,
+        TlpType::FetchAddAtomicOpReq => AtomicOp::FetchAdd,
+        TlpType::SwapAtomicOpReq => AtomicOp::Swap,
         TlpType::CompareSwapAtomicOpReq => AtomicOp::CompareSwap,
-        _                               => return Err(TlpError::UnsupportedCombination),
+        _ => return Err(TlpError::UnsupportedCombination),
     };
     let (width, hdr_len) = match format {
         TlpFmt::WithDataHeader3DW => (AtomicWidth::W32, 8usize),
         TlpFmt::WithDataHeader4DW => (AtomicWidth::W64, 12usize),
-        _                         => return Err(TlpError::UnsupportedCombination),
+        _ => return Err(TlpError::UnsupportedCombination),
     };
 
-    let op_size = match width { AtomicWidth::W32 => 4usize, AtomicWidth::W64 => 8usize };
-    let num_ops = if matches!(op, AtomicOp::CompareSwap) { 2 } else { 1 };
-    let needed  = hdr_len + op_size * num_ops;
-    if bytes.len() != needed { return Err(TlpError::InvalidLength); }
+    let op_size = match width {
+        AtomicWidth::W32 => 4usize,
+        AtomicWidth::W64 => 8usize,
+    };
+    let num_ops = if matches!(op, AtomicOp::CompareSwap) {
+        2
+    } else {
+        1
+    };
+    let needed = hdr_len + op_size * num_ops;
+    if bytes.len() != needed {
+        return Err(TlpError::InvalidLength);
+    }
 
-    let req_id  = u16::from_be_bytes([bytes[0], bytes[1]]);
-    let tag     = bytes[2];
+    let req_id = u16::from_be_bytes([bytes[0], bytes[1]]);
+    let tag = bytes[2];
     let address = match width {
         AtomicWidth::W32 => u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as u64,
         AtomicWidth::W64 => u64::from_be_bytes([
-            bytes[4], bytes[5], bytes[6],  bytes[7],
-            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
         ]),
     };
 
@@ -933,7 +957,15 @@ pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpErro
         None
     };
 
-    Ok(Box::new(AtomicReq { op, width, req_id, tag, address, operand0, operand1 }))
+    Ok(Box::new(AtomicReq {
+        op,
+        width,
+        req_id,
+        tag,
+        address,
+        operand0,
+        operand1,
+    }))
 }
 
 // ============================================================================
@@ -1007,11 +1039,16 @@ impl FlitTlpType {
     /// - NOP and Local TLP Prefix (management objects with no data)
     /// - Message-without-data variants (`MsgToRc`)
     pub fn has_data_payload(&self) -> bool {
-        matches!(self,
-            FlitTlpType::MemWrite32 | FlitTlpType::UioMemWrite
-            | FlitTlpType::IoWrite | FlitTlpType::CfgWrite0
-            | FlitTlpType::FetchAdd32 | FlitTlpType::CompareSwap32
-            | FlitTlpType::DeferrableMemWrite32 | FlitTlpType::MsgDToRc
+        matches!(
+            self,
+            FlitTlpType::MemWrite32
+                | FlitTlpType::UioMemWrite
+                | FlitTlpType::IoWrite
+                | FlitTlpType::CfgWrite0
+                | FlitTlpType::FetchAdd32
+                | FlitTlpType::CompareSwap32
+                | FlitTlpType::DeferrableMemWrite32
+                | FlitTlpType::MsgDToRc
         )
     }
 }
@@ -1019,19 +1056,19 @@ impl FlitTlpType {
 impl Display for FlitTlpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            FlitTlpType::Nop                 => "NOP",
-            FlitTlpType::MemRead32           => "Memory Read (32-bit)",
-            FlitTlpType::UioMemRead          => "UIO Memory Read (64-bit)",
-            FlitTlpType::MsgToRc             => "Message routed to RC",
-            FlitTlpType::MemWrite32          => "Memory Write (32-bit)",
-            FlitTlpType::IoWrite             => "I/O Write",
-            FlitTlpType::CfgWrite0           => "Config Type 0 Write",
-            FlitTlpType::FetchAdd32          => "FetchAdd AtomicOp (32-bit)",
-            FlitTlpType::CompareSwap32       => "CompareSwap AtomicOp (32-bit)",
-            FlitTlpType::DeferrableMemWrite32=> "Deferrable Memory Write (32-bit)",
-            FlitTlpType::UioMemWrite         => "UIO Memory Write (64-bit)",
-            FlitTlpType::MsgDToRc            => "Message with Data routed to RC",
-            FlitTlpType::LocalTlpPrefix      => "Local TLP Prefix",
+            FlitTlpType::Nop => "NOP",
+            FlitTlpType::MemRead32 => "Memory Read (32-bit)",
+            FlitTlpType::UioMemRead => "UIO Memory Read (64-bit)",
+            FlitTlpType::MsgToRc => "Message routed to RC",
+            FlitTlpType::MemWrite32 => "Memory Write (32-bit)",
+            FlitTlpType::IoWrite => "I/O Write",
+            FlitTlpType::CfgWrite0 => "Config Type 0 Write",
+            FlitTlpType::FetchAdd32 => "FetchAdd AtomicOp (32-bit)",
+            FlitTlpType::CompareSwap32 => "CompareSwap AtomicOp (32-bit)",
+            FlitTlpType::DeferrableMemWrite32 => "Deferrable Memory Write (32-bit)",
+            FlitTlpType::UioMemWrite => "UIO Memory Write (64-bit)",
+            FlitTlpType::MsgDToRc => "Message with Data routed to RC",
+            FlitTlpType::LocalTlpPrefix => "Local TLP Prefix",
         };
         write!(f, "{name}")
     }
@@ -1055,7 +1092,7 @@ impl TryFrom<u8> for FlitTlpType {
             0x61 => Ok(FlitTlpType::UioMemWrite),
             0x70 => Ok(FlitTlpType::MsgDToRc),
             0x8D => Ok(FlitTlpType::LocalTlpPrefix),
-            _    => Err(TlpError::InvalidType),
+            _ => Err(TlpError::InvalidType),
         }
     }
 }
@@ -1100,12 +1137,19 @@ impl FlitDW0 {
             return Err(TlpError::InvalidLength);
         }
         let tlp_type = FlitTlpType::try_from(b[0])?;
-        let tc       = (b[1] >> 5) & 0x07;
-        let ohc      = b[1] & 0x1F;
-        let ts       = (b[2] >> 5) & 0x07;
-        let attr     = (b[2] >> 2) & 0x07;
-        let length   = (((b[2] & 0x03) as u16) << 8) | (b[3] as u16);
-        Ok(FlitDW0 { tlp_type, tc, ohc, ts, attr, length })
+        let tc = (b[1] >> 5) & 0x07;
+        let ohc = b[1] & 0x1F;
+        let ts = (b[2] >> 5) & 0x07;
+        let attr = (b[2] >> 2) & 0x07;
+        let length = (((b[2] & 0x03) as u16) << 8) | (b[3] as u16);
+        Ok(FlitDW0 {
+            tlp_type,
+            tc,
+            ohc,
+            ts,
+            attr,
+            length,
+        })
     }
 
     /// Number of OHC extension words present — popcount of [`FlitDW0::ohc`].
@@ -1121,12 +1165,16 @@ impl FlitDW0 {
     /// Types that never carry payload (read requests, NOP, LocalTlpPrefix, MsgToRc)
     /// always contribute zero payload bytes.
     pub fn total_bytes(&self) -> usize {
-        let header_bytes = (self.tlp_type.base_header_dw() as usize
-            + self.ohc_count() as usize) * 4;
+        let header_bytes =
+            (self.tlp_type.base_header_dw() as usize + self.ohc_count() as usize) * 4;
         let payload_bytes = if !self.tlp_type.has_data_payload() {
             0
         } else {
-            let dw_count = if self.length == 0 { 1024 } else { self.length as usize };
+            let dw_count = if self.length == 0 {
+                1024
+            } else {
+                self.length as usize
+            };
             dw_count * 4
         };
         header_bytes + payload_bytes
@@ -1164,12 +1212,14 @@ impl FlitOhcA {
         if b.len() < 4 {
             return Err(TlpError::InvalidLength);
         }
-        let pasid = ((b[0] as u32 & 0x0F) << 16)
-            | ((b[1] as u32) << 8)
-            | (b[2] as u32);
+        let pasid = ((b[0] as u32 & 0x0F) << 16) | ((b[1] as u32) << 8) | (b[2] as u32);
         let fdwbe = b[3] & 0x0F;
         let ldwbe = (b[3] >> 4) & 0x0F;
-        Ok(FlitOhcA { pasid, fdwbe, ldwbe })
+        Ok(FlitOhcA {
+            pasid,
+            fdwbe,
+            ldwbe,
+        })
     }
 }
 
@@ -1223,7 +1273,11 @@ pub struct FlitStreamWalker<'a> {
 impl<'a> FlitStreamWalker<'a> {
     /// Create a new walker over a packed flit TLP byte stream.
     pub fn new(data: &'a [u8]) -> Self {
-        FlitStreamWalker { data, pos: 0, errored: false }
+        FlitStreamWalker {
+            data,
+            pos: 0,
+            errored: false,
+        }
     }
 }
 
@@ -1236,8 +1290,11 @@ impl<'a> Iterator for FlitStreamWalker<'a> {
         }
         let offset = self.pos;
         let dw0 = match FlitDW0::from_dw0(&self.data[self.pos..]) {
-            Ok(d)  => d,
-            Err(e) => { self.errored = true; return Some(Err(e)); }
+            Ok(d) => d,
+            Err(e) => {
+                self.errored = true;
+                return Some(Err(e));
+            }
         };
         let total = dw0.total_bytes();
         if self.pos + total > self.data.len() {
@@ -1262,19 +1319,19 @@ pub struct TlpPacketHeader {
 impl fmt::Debug for TlpPacketHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TlpPacketHeader")
-            .field("format",  &self.header.get_format())
-            .field("type",    &self.header.get_type())
-            .field("tc",      &self.header.get_tc())
-            .field("t9",      &self.header.get_t9())
-            .field("t8",      &self.header.get_t8())
-            .field("attr_b2", &self.header.get_attr_b2())
-            .field("ln",      &self.header.get_ln())
-            .field("th",      &self.header.get_th())
-            .field("td",      &self.header.get_td())
-            .field("ep",      &self.header.get_ep())
-            .field("attr",    &self.header.get_attr())
-            .field("at",      &self.header.get_at())
-            .field("length",  &self.header.get_length())
+            .field("format", &self.get_format())
+            .field("type", &self.get_type())
+            .field("tc", &self.get_tc())
+            .field("t9", &self.get_t9())
+            .field("t8", &self.get_t8())
+            .field("attr_b2", &self.get_attr_b2())
+            .field("ln", &self.get_ln())
+            .field("th", &self.get_th())
+            .field("td", &self.get_td())
+            .field("ep", &self.get_ep())
+            .field("attr", &self.get_attr())
+            .field("at", &self.get_at())
+            .field("length", &self.get_length())
             .finish()
     }
 }
@@ -1304,7 +1361,9 @@ impl TlpPacketHeader {
         let mut dw0 = vec![0; 4];
         dw0[..4].clone_from_slice(&bytes[0..4]);
 
-        Ok(TlpPacketHeader { header: TlpHeader(dw0) })
+        Ok(TlpPacketHeader {
+            header: TlpHeader(dw0),
+        })
     }
 
     /// Decode and return the TLP type from the DW0 header fields.
@@ -1330,21 +1389,47 @@ impl TlpPacketHeader {
     }
 
     /// Raw Traffic Class field from DW0 (`bits[11:9]`).
-    pub fn get_tc(&self) -> u32 { self.header.get_tc() }
+    pub fn get_tc(&self) -> u32 {
+        self.header.get_tc()
+    }
 
     /// Raw 3-bit Format field from DW0 (`bits[2:0]` of byte 0 in MSB0 layout).
-    pub(crate) fn get_format(&self) -> u32 {self.header.get_format()}
-    pub(crate) fn get_type(&self) -> u32 {self.header.get_type()}
-    pub(crate) fn get_t9(&self) -> u32 {self.header.get_t9()}
-    pub(crate) fn get_t8(&self) -> u32 {self.header.get_t8()}
-    pub(crate) fn get_attr_b2(&self) -> u32 {self.header.get_attr_b2()}
-    pub(crate) fn get_ln(&self) -> u32 {self.header.get_ln()}
-    pub(crate) fn get_th(&self) -> u32 {self.header.get_th()}
-    pub(crate) fn get_td(&self) -> u32 {self.header.get_td()}
-    pub(crate) fn get_ep(&self) -> u32 {self.header.get_ep()}
-    pub(crate) fn get_attr(&self) -> u32 {self.header.get_attr()}
-    pub(crate) fn get_at(&self) -> u32 {self.header.get_at()}
-    pub(crate) fn get_length(&self) -> u32 {self.header.get_length()}
+    pub(crate) fn get_format(&self) -> u32 {
+        self.header.get_format()
+    }
+    pub(crate) fn get_type(&self) -> u32 {
+        self.header.get_type()
+    }
+    pub(crate) fn get_t9(&self) -> u32 {
+        self.header.get_t9()
+    }
+    pub(crate) fn get_t8(&self) -> u32 {
+        self.header.get_t8()
+    }
+    pub(crate) fn get_attr_b2(&self) -> u32 {
+        self.header.get_attr_b2()
+    }
+    pub(crate) fn get_ln(&self) -> u32 {
+        self.header.get_ln()
+    }
+    pub(crate) fn get_th(&self) -> u32 {
+        self.header.get_th()
+    }
+    pub(crate) fn get_td(&self) -> u32 {
+        self.header.get_td()
+    }
+    pub(crate) fn get_ep(&self) -> u32 {
+        self.header.get_ep()
+    }
+    pub(crate) fn get_attr(&self) -> u32 {
+        self.header.get_attr()
+    }
+    pub(crate) fn get_at(&self) -> u32 {
+        self.header.get_at()
+    }
+    pub(crate) fn get_length(&self) -> u32 {
+        self.header.get_length()
+    }
 }
 
 /// TLP Packet structure is high level abstraction for entire TLP packet
@@ -1407,7 +1492,7 @@ pub struct TlpPacket {
 impl fmt::Debug for TlpPacket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TlpPacket")
-            .field("header",   &self.header)
+            .field("header", &self.header)
             .field("flit_dw0", &self.flit_dw0)
             .field("data_len", &self.data.len())
             .finish()
@@ -1428,7 +1513,7 @@ impl TlpPacket {
     pub fn new(bytes: Vec<u8>, mode: TlpMode) -> Result<TlpPacket, TlpError> {
         match mode {
             TlpMode::NonFlit => Self::new_non_flit(bytes),
-            TlpMode::Flit    => Self::new_flit(bytes),
+            TlpMode::Flit => Self::new_flit(bytes),
         }
     }
 
@@ -1454,8 +1539,7 @@ impl TlpPacket {
         let dw0 = FlitDW0::from_dw0(&bytes)?;
         dw0.validate_mandatory_ohc()?;
 
-        let hdr_bytes = (dw0.tlp_type.base_header_dw() as usize
-            + dw0.ohc_count() as usize) * 4;
+        let hdr_bytes = (dw0.tlp_type.base_header_dw() as usize + dw0.ohc_count() as usize) * 4;
         if bytes.len() < hdr_bytes {
             return Err(TlpError::InvalidLength);
         }
@@ -1463,7 +1547,11 @@ impl TlpPacket {
 
         // Use a dummy non-flit header; callers should use flit_type() for type queries.
         let dummy = TlpPacketHeader::new_non_flit(vec![0u8; 4])?;
-        Ok(TlpPacket { header: dummy, flit_dw0: Some(dw0), data: payload })
+        Ok(TlpPacket {
+            header: dummy,
+            flit_dw0: Some(dw0),
+            data: payload,
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -1543,7 +1631,11 @@ impl TlpPacket {
     /// }
     /// ```
     pub fn mode(&self) -> TlpMode {
-        if self.flit_dw0.is_some() { TlpMode::Flit } else { TlpMode::NonFlit }
+        if self.flit_dw0.is_some() {
+            TlpMode::Flit
+        } else {
+            TlpMode::NonFlit
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1633,19 +1725,31 @@ mod tests {
 
         // Config Type 0 Read request: FMT: '000' Type '0 0100'
         let conf_t0_read = TlpHeader([0x04, 0x00, 0x00, 0x01]);
-        assert_eq!(conf_t0_read.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
+        assert_eq!(
+            conf_t0_read.get_tlp_type().unwrap(),
+            TlpType::ConfType0ReadReq
+        );
 
         // Config Type 0 Write request: FMT: '010' Type '0 0100'
         let conf_t0_write = TlpHeader([0x44, 0x00, 0x00, 0x01]);
-        assert_eq!(conf_t0_write.get_tlp_type().unwrap(), TlpType::ConfType0WriteReq);
+        assert_eq!(
+            conf_t0_write.get_tlp_type().unwrap(),
+            TlpType::ConfType0WriteReq
+        );
 
         // Config Type 1 Read request: FMT: '000' Type '0 0101'
         let conf_t1_read = TlpHeader([0x05, 0x88, 0x80, 0x01]);
-        assert_eq!(conf_t1_read.get_tlp_type().unwrap(), TlpType::ConfType1ReadReq);
+        assert_eq!(
+            conf_t1_read.get_tlp_type().unwrap(),
+            TlpType::ConfType1ReadReq
+        );
 
         // Config Type 1 Write request: FMT: '010' Type '0 0101'
         let conf_t1_write = TlpHeader([0x45, 0x88, 0x80, 0x01]);
-        assert_eq!(conf_t1_write.get_tlp_type().unwrap(), TlpType::ConfType1WriteReq);
+        assert_eq!(
+            conf_t1_write.get_tlp_type().unwrap(),
+            TlpType::ConfType1WriteReq
+        );
 
         // HeaderLog: 04000001 0000220f 01070000 af36fc70
         // HeaderLog: 60009001 4000000f 00000280 4047605c
@@ -1697,15 +1801,24 @@ mod tests {
         // byte0 layout: bits[7:5] = fmt, bits[4:0] = type
         // Fmt=0b101 → byte0 = 0b1010_0000 = 0xA0
         let invalid_fmt_101 = TlpHeader([0xa0, 0x00, 0x00, 0x01]);
-        assert_eq!(invalid_fmt_101.get_tlp_type().unwrap_err(), TlpError::InvalidFormat);
+        assert_eq!(
+            invalid_fmt_101.get_tlp_type().unwrap_err(),
+            TlpError::InvalidFormat
+        );
 
         // Fmt=0b110 → byte0 = 0b1100_0000 = 0xC0
         let invalid_fmt_110 = TlpHeader([0xc0, 0x00, 0x00, 0x01]);
-        assert_eq!(invalid_fmt_110.get_tlp_type().unwrap_err(), TlpError::InvalidFormat);
+        assert_eq!(
+            invalid_fmt_110.get_tlp_type().unwrap_err(),
+            TlpError::InvalidFormat
+        );
 
         // Fmt=0b111 → byte0 = 0b1110_0000 = 0xE0
         let invalid_fmt_111 = TlpHeader([0xe0, 0x00, 0x00, 0x01]);
-        assert_eq!(invalid_fmt_111.get_tlp_type().unwrap_err(), TlpError::InvalidFormat);
+        assert_eq!(
+            invalid_fmt_111.get_tlp_type().unwrap_err(),
+            TlpError::InvalidFormat
+        );
     }
 
     #[test]
@@ -1735,17 +1848,23 @@ mod tests {
         let result = new_mem_req(bytes, &TlpFmt::TlpPrefix);
         assert!(matches!(result, Err(TlpError::UnsupportedCombination)));
     }
-  
+
     // ── short packet rejection ─────────────────────────────────────────────
-  
+
     #[test]
     fn packet_new_rejects_empty_input() {
-        assert!(matches!(TlpPacket::new(vec![], TlpMode::NonFlit), Err(TlpError::InvalidLength)));
+        assert!(matches!(
+            TlpPacket::new(vec![], TlpMode::NonFlit),
+            Err(TlpError::InvalidLength)
+        ));
     }
 
     #[test]
     fn packet_new_rejects_3_bytes() {
-        assert!(matches!(TlpPacket::new(vec![0x00, 0x00, 0x00], TlpMode::NonFlit), Err(TlpError::InvalidLength)));
+        assert!(matches!(
+            TlpPacket::new(vec![0x00, 0x00, 0x00], TlpMode::NonFlit),
+            Err(TlpError::InvalidLength)
+        ));
     }
 
     #[test]
@@ -1756,7 +1875,10 @@ mod tests {
 
     #[test]
     fn packet_header_new_rejects_short_input() {
-        assert!(matches!(TlpPacketHeader::new(vec![0x00, 0x00], TlpMode::NonFlit), Err(TlpError::InvalidLength)));
+        assert!(matches!(
+            TlpPacketHeader::new(vec![0x00, 0x00], TlpMode::NonFlit),
+            Err(TlpError::InvalidLength)
+        ));
     }
 
     // ── TlpMode: Flit ─────────────────────────────────────────────────────
@@ -1773,7 +1895,9 @@ mod tests {
     #[test]
     fn packet_new_flit_mrd32_has_no_payload() {
         // MRd32 flit (type 0x03, 3 DW base header, no payload despite Length=1)
-        let bytes = vec![0x03, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let bytes = vec![
+            0x03, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
         assert_eq!(pkt.flit_type(), Some(FlitTlpType::MemRead32));
         assert!(pkt.data().is_empty()); // read request, no payload
@@ -1804,7 +1928,10 @@ mod tests {
     fn packet_header_new_flit_returns_not_implemented() {
         // TlpPacketHeader::new() with Flit still returns NotImplemented
         let bytes = vec![0x00, 0x00, 0x00, 0x00];
-        assert_eq!(TlpPacketHeader::new(bytes, TlpMode::Flit).err().unwrap(), TlpError::NotImplemented);
+        assert_eq!(
+            TlpPacketHeader::new(bytes, TlpMode::Flit).err().unwrap(),
+            TlpError::NotImplemented
+        );
     }
 
     // ── TlpMode: derive traits ─────────────────────────────────────────────
@@ -1820,10 +1947,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::clone_on_copy)]
     fn tlp_mode_copy_and_clone() {
         let m = TlpMode::NonFlit;
         let m2 = m; // Copy
-        let m3 = m.clone(); // Clone
+        let m3 = m.clone(); // Verify Clone trait is callable on Copy types
         assert_eq!(m2, TlpMode::NonFlit);
         assert_eq!(m3, TlpMode::NonFlit);
     }
@@ -1866,137 +1994,306 @@ mod tests {
 
     #[test]
     fn header_decode_supported_pairs() {
-        const FMT_3DW_NO_DATA:   u8 = 0b000;
-        const FMT_4DW_NO_DATA:   u8 = 0b001;
+        const FMT_3DW_NO_DATA: u8 = 0b000;
+        const FMT_4DW_NO_DATA: u8 = 0b001;
         const FMT_3DW_WITH_DATA: u8 = 0b010;
         const FMT_4DW_WITH_DATA: u8 = 0b011;
 
-        const TY_MEM:        u8 = 0b00000;
-        const TY_MEM_LK:     u8 = 0b00001;
-        const TY_IO:         u8 = 0b00010;
-        const TY_CFG0:       u8 = 0b00100;
-        const TY_CFG1:       u8 = 0b00101;
-        const TY_CPL:        u8 = 0b01010;
-        const TY_CPL_LK:     u8 = 0b01011;
+        const TY_MEM: u8 = 0b00000;
+        const TY_MEM_LK: u8 = 0b00001;
+        const TY_IO: u8 = 0b00010;
+        const TY_CFG0: u8 = 0b00100;
+        const TY_CFG1: u8 = 0b00101;
+        const TY_CPL: u8 = 0b01010;
+        const TY_CPL_LK: u8 = 0b01011;
         const TY_ATOM_FETCH: u8 = 0b01100;
-        const TY_ATOM_SWAP:  u8 = 0b01101;
-        const TY_ATOM_CAS:   u8 = 0b01110;
-        const TY_DMWR:       u8 = 0b11011;
+        const TY_ATOM_SWAP: u8 = 0b01101;
+        const TY_ATOM_CAS: u8 = 0b01110;
+        const TY_DMWR: u8 = 0b11011;
 
         // Memory Request: NoData → Read, WithData → Write; both 3DW and 4DW
-        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_MEM).get_tlp_type().unwrap(), TlpType::MemReadReq);
-        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_MEM).get_tlp_type().unwrap(), TlpType::MemReadReq);
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_MEM).get_tlp_type().unwrap(), TlpType::MemWriteReq);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_MEM).get_tlp_type().unwrap(), TlpType::MemWriteReq);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_MEM).get_tlp_type().unwrap(),
+            TlpType::MemReadReq
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_MEM).get_tlp_type().unwrap(),
+            TlpType::MemReadReq
+        );
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_MEM).get_tlp_type().unwrap(),
+            TlpType::MemWriteReq
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_MEM).get_tlp_type().unwrap(),
+            TlpType::MemWriteReq
+        );
 
         // Memory Lock Request: NoData only (3DW and 4DW)
-        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_MEM_LK).get_tlp_type().unwrap(), TlpType::MemReadLockReq);
-        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_MEM_LK).get_tlp_type().unwrap(), TlpType::MemReadLockReq);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_MEM_LK).get_tlp_type().unwrap(),
+            TlpType::MemReadLockReq
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_MEM_LK).get_tlp_type().unwrap(),
+            TlpType::MemReadLockReq
+        );
 
         // IO Request: 3DW only; NoData → Read, WithData → Write
-        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_IO).get_tlp_type().unwrap(), TlpType::IOReadReq);
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_IO).get_tlp_type().unwrap(), TlpType::IOWriteReq);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_IO).get_tlp_type().unwrap(),
+            TlpType::IOReadReq
+        );
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_IO).get_tlp_type().unwrap(),
+            TlpType::IOWriteReq
+        );
 
         // Config Type 0: 3DW only
-        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CFG0).get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CFG0).get_tlp_type().unwrap(), TlpType::ConfType0WriteReq);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_CFG0).get_tlp_type().unwrap(),
+            TlpType::ConfType0ReadReq
+        );
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_CFG0).get_tlp_type().unwrap(),
+            TlpType::ConfType0WriteReq
+        );
 
         // Config Type 1: 3DW only
-        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CFG1).get_tlp_type().unwrap(), TlpType::ConfType1ReadReq);
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CFG1).get_tlp_type().unwrap(), TlpType::ConfType1WriteReq);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_CFG1).get_tlp_type().unwrap(),
+            TlpType::ConfType1ReadReq
+        );
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_CFG1).get_tlp_type().unwrap(),
+            TlpType::ConfType1WriteReq
+        );
 
         // Completion: 3DW only; NoData → Cpl, WithData → CplData
-        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CPL).get_tlp_type().unwrap(), TlpType::Cpl);
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CPL).get_tlp_type().unwrap(), TlpType::CplData);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_CPL).get_tlp_type().unwrap(),
+            TlpType::Cpl
+        );
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_CPL).get_tlp_type().unwrap(),
+            TlpType::CplData
+        );
 
         // Completion Locked: 3DW only
-        assert_eq!(dw0(FMT_3DW_NO_DATA,   TY_CPL_LK).get_tlp_type().unwrap(), TlpType::CplLocked);
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_CPL_LK).get_tlp_type().unwrap(), TlpType::CplDataLocked);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_CPL_LK).get_tlp_type().unwrap(),
+            TlpType::CplLocked
+        );
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_CPL_LK).get_tlp_type().unwrap(),
+            TlpType::CplDataLocked
+        );
 
         // Atomics: WithData only (3DW and 4DW)
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_ATOM_FETCH)
+                .get_tlp_type()
+                .unwrap(),
+            TlpType::FetchAddAtomicOpReq
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_ATOM_FETCH)
+                .get_tlp_type()
+                .unwrap(),
+            TlpType::FetchAddAtomicOpReq
+        );
 
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap(),
+            TlpType::SwapAtomicOpReq
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap(),
+            TlpType::SwapAtomicOpReq
+        );
 
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(),
+            TlpType::CompareSwapAtomicOpReq
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_ATOM_CAS).get_tlp_type().unwrap(),
+            TlpType::CompareSwapAtomicOpReq
+        );
 
         // DMWr: WithData only (3DW and 4DW)
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(),
+            TlpType::DeferrableMemWriteReq
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_DMWR).get_tlp_type().unwrap(),
+            TlpType::DeferrableMemWriteReq
+        );
 
         // Message Requests: all 6 routing sub-types, no-data → MsgReq, with-data → MsgReqData
         // Type[4:0]: 10000=routeRC, 10001=routeAddr, 10010=routeID,
         //            10011=broadcast, 10100=local, 10101=gathered
         for routing in 0b10000u8..=0b10101u8 {
-            assert_eq!(dw0(FMT_3DW_NO_DATA,   routing).get_tlp_type().unwrap(), TlpType::MsgReq,
-                "Fmt=000 Type={:#07b} should be MsgReq", routing);
-            assert_eq!(dw0(FMT_4DW_NO_DATA,   routing).get_tlp_type().unwrap(), TlpType::MsgReq,
-                "Fmt=001 Type={:#07b} should be MsgReq", routing);
-            assert_eq!(dw0(FMT_3DW_WITH_DATA, routing).get_tlp_type().unwrap(), TlpType::MsgReqData,
-                "Fmt=010 Type={:#07b} should be MsgReqData", routing);
-            assert_eq!(dw0(FMT_4DW_WITH_DATA, routing).get_tlp_type().unwrap(), TlpType::MsgReqData,
-                "Fmt=011 Type={:#07b} should be MsgReqData", routing);
+            assert_eq!(
+                dw0(FMT_3DW_NO_DATA, routing).get_tlp_type().unwrap(),
+                TlpType::MsgReq,
+                "Fmt=000 Type={:#07b} should be MsgReq",
+                routing
+            );
+            assert_eq!(
+                dw0(FMT_4DW_NO_DATA, routing).get_tlp_type().unwrap(),
+                TlpType::MsgReq,
+                "Fmt=001 Type={:#07b} should be MsgReq",
+                routing
+            );
+            assert_eq!(
+                dw0(FMT_3DW_WITH_DATA, routing).get_tlp_type().unwrap(),
+                TlpType::MsgReqData,
+                "Fmt=010 Type={:#07b} should be MsgReqData",
+                routing
+            );
+            assert_eq!(
+                dw0(FMT_4DW_WITH_DATA, routing).get_tlp_type().unwrap(),
+                TlpType::MsgReqData,
+                "Fmt=011 Type={:#07b} should be MsgReqData",
+                routing
+            );
         }
-
     }
 
     // ── negative path: every illegal (fmt, type) pair → UnsupportedCombination ─
 
     #[test]
     fn header_decode_rejects_unsupported_combinations() {
-        const FMT_3DW_NO_DATA:   u8 = 0b000;
-        const FMT_4DW_NO_DATA:   u8 = 0b001;
+        const FMT_3DW_NO_DATA: u8 = 0b000;
+        const FMT_4DW_NO_DATA: u8 = 0b001;
         const FMT_3DW_WITH_DATA: u8 = 0b010;
         const FMT_4DW_WITH_DATA: u8 = 0b011;
 
-        const TY_MEM_LK:     u8 = 0b00001;
-        const TY_IO:         u8 = 0b00010;
-        const TY_CFG0:       u8 = 0b00100;
-        const TY_CFG1:       u8 = 0b00101;
-        const TY_CPL:        u8 = 0b01010;
-        const TY_CPL_LK:     u8 = 0b01011;
+        const TY_MEM_LK: u8 = 0b00001;
+        const TY_IO: u8 = 0b00010;
+        const TY_CFG0: u8 = 0b00100;
+        const TY_CFG1: u8 = 0b00101;
+        const TY_CPL: u8 = 0b01010;
+        const TY_CPL_LK: u8 = 0b01011;
         const TY_ATOM_FETCH: u8 = 0b01100;
-        const TY_ATOM_SWAP:  u8 = 0b01101;
-        const TY_ATOM_CAS:   u8 = 0b01110;
-        const TY_DMWR:       u8 = 0b11011;
+        const TY_ATOM_SWAP: u8 = 0b01101;
+        const TY_ATOM_CAS: u8 = 0b01110;
+        const TY_DMWR: u8 = 0b11011;
 
         // IO: 4DW variants are illegal
-        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_IO).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_IO).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_IO).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_IO).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
 
         // Config: 4DW variants are illegal (configs are always 3DW)
-        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CFG0).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CFG1).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CFG1).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_CFG0).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_CFG0).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_CFG1).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_CFG1).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
 
         // Completions: 4DW variants are illegal
-        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CPL).get_tlp_type().unwrap_err(),    TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CPL).get_tlp_type().unwrap_err(),    TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_NO_DATA,   TY_CPL_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_CPL_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_CPL).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_CPL).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_CPL_LK).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_CPL_LK)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
 
         // Atomics: NoData variants are illegal (atomics always carry data)
-        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_ATOM_FETCH).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_ATOM_SWAP).get_tlp_type().unwrap_err(),  TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_ATOM_CAS).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_ATOM_CAS).get_tlp_type().unwrap_err(),   TlpError::UnsupportedCombination);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_ATOM_FETCH)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_ATOM_FETCH)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_ATOM_SWAP)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_ATOM_SWAP)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_ATOM_CAS)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_ATOM_CAS)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
 
         // MemReadLock: WithData variants are illegal (lock is a read-only operation)
-        assert_eq!(dw0(FMT_3DW_WITH_DATA, TY_MEM_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_WITH_DATA, TY_MEM_LK).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(
+            dw0(FMT_3DW_WITH_DATA, TY_MEM_LK)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_WITH_DATA, TY_MEM_LK)
+                .get_tlp_type()
+                .unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
 
         // TlpPrefix fmt (0b100): all Type values decode to a Prefix type, never UnsupportedCombination.
         // These are tested in header_decode_prefix_and_message_types.
 
         // DMWr: NoData variants are illegal (DMWr always carries data)
-        assert_eq!(dw0(FMT_3DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
-        assert_eq!(dw0(FMT_4DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+        assert_eq!(
+            dw0(FMT_3DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
+        assert_eq!(
+            dw0(FMT_4DW_NO_DATA, TY_DMWR).get_tlp_type().unwrap_err(),
+            TlpError::UnsupportedCombination
+        );
         // Note: FMT_PREFIX with TY_DMWR now decodes to EndToEndTlpPrefix (Type[4]=1)
     }
 
@@ -2006,14 +2303,20 @@ mod tests {
     fn tlp_header_dmwr32_decode() {
         // Fmt=010 (3DW w/ Data), Type=11011 (DMWr) → byte0 = 0x5B
         let dmwr32 = TlpHeader([0x5B, 0x00, 0x00, 0x00]);
-        assert_eq!(dmwr32.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(
+            dmwr32.get_tlp_type().unwrap(),
+            TlpType::DeferrableMemWriteReq
+        );
     }
 
     #[test]
     fn tlp_header_dmwr64_decode() {
         // Fmt=011 (4DW w/ Data), Type=11011 (DMWr) → byte0 = 0x7B
         let dmwr64 = TlpHeader([0x7B, 0x00, 0x00, 0x00]);
-        assert_eq!(dmwr64.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(
+            dmwr64.get_tlp_type().unwrap(),
+            TlpType::DeferrableMemWriteReq
+        );
     }
 
     #[test]
@@ -2046,7 +2349,7 @@ mod tests {
 
         let mr = new_mem_req(pkt.data().to_vec(), &pkt.tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xABCD);
-        assert_eq!(mr.tag(),    0x42);
+        assert_eq!(mr.tag(), 0x42);
         assert_eq!(mr.address(), 0xDEAD_0000);
     }
 
@@ -2064,7 +2367,7 @@ mod tests {
 
         let mr = new_mem_req(pkt.data().to_vec(), &pkt.tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xBEEF);
-        assert_eq!(mr.tag(),    0xA5);
+        assert_eq!(mr.tag(), 0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
     }
 
@@ -2107,33 +2410,90 @@ mod tests {
     #[test]
     fn is_non_posted_exhaustive_all_21_variants() {
         // --- Non-posted (require a Completion) ---
-        assert!(TlpType::MemReadReq.is_non_posted(),          "MemReadReq must be non-posted");
-        assert!(TlpType::MemReadLockReq.is_non_posted(),      "MemReadLockReq must be non-posted");
-        assert!(TlpType::IOReadReq.is_non_posted(),           "IOReadReq must be non-posted");
-        assert!(TlpType::IOWriteReq.is_non_posted(),          "IOWriteReq must be non-posted");
-        assert!(TlpType::ConfType0ReadReq.is_non_posted(),    "ConfType0ReadReq must be non-posted");
-        assert!(TlpType::ConfType0WriteReq.is_non_posted(),   "ConfType0WriteReq must be non-posted");
-        assert!(TlpType::ConfType1ReadReq.is_non_posted(),    "ConfType1ReadReq must be non-posted");
-        assert!(TlpType::ConfType1WriteReq.is_non_posted(),   "ConfType1WriteReq must be non-posted");
-        assert!(TlpType::FetchAddAtomicOpReq.is_non_posted(), "FetchAddAtomicOpReq must be non-posted");
-        assert!(TlpType::SwapAtomicOpReq.is_non_posted(),     "SwapAtomicOpReq must be non-posted");
-        assert!(TlpType::CompareSwapAtomicOpReq.is_non_posted(), "CompareSwapAtomicOpReq must be non-posted");
-        assert!(TlpType::DeferrableMemWriteReq.is_non_posted(), "DeferrableMemWriteReq must be non-posted");
+        assert!(
+            TlpType::MemReadReq.is_non_posted(),
+            "MemReadReq must be non-posted"
+        );
+        assert!(
+            TlpType::MemReadLockReq.is_non_posted(),
+            "MemReadLockReq must be non-posted"
+        );
+        assert!(
+            TlpType::IOReadReq.is_non_posted(),
+            "IOReadReq must be non-posted"
+        );
+        assert!(
+            TlpType::IOWriteReq.is_non_posted(),
+            "IOWriteReq must be non-posted"
+        );
+        assert!(
+            TlpType::ConfType0ReadReq.is_non_posted(),
+            "ConfType0ReadReq must be non-posted"
+        );
+        assert!(
+            TlpType::ConfType0WriteReq.is_non_posted(),
+            "ConfType0WriteReq must be non-posted"
+        );
+        assert!(
+            TlpType::ConfType1ReadReq.is_non_posted(),
+            "ConfType1ReadReq must be non-posted"
+        );
+        assert!(
+            TlpType::ConfType1WriteReq.is_non_posted(),
+            "ConfType1WriteReq must be non-posted"
+        );
+        assert!(
+            TlpType::FetchAddAtomicOpReq.is_non_posted(),
+            "FetchAddAtomicOpReq must be non-posted"
+        );
+        assert!(
+            TlpType::SwapAtomicOpReq.is_non_posted(),
+            "SwapAtomicOpReq must be non-posted"
+        );
+        assert!(
+            TlpType::CompareSwapAtomicOpReq.is_non_posted(),
+            "CompareSwapAtomicOpReq must be non-posted"
+        );
+        assert!(
+            TlpType::DeferrableMemWriteReq.is_non_posted(),
+            "DeferrableMemWriteReq must be non-posted"
+        );
 
         // --- Posted (no Completion expected) ---
-        assert!(!TlpType::MemWriteReq.is_non_posted(),        "MemWriteReq is posted");
-        assert!(!TlpType::MsgReq.is_non_posted(),             "MsgReq is posted");
-        assert!(!TlpType::MsgReqData.is_non_posted(),         "MsgReqData is posted");
+        assert!(
+            !TlpType::MemWriteReq.is_non_posted(),
+            "MemWriteReq is posted"
+        );
+        assert!(!TlpType::MsgReq.is_non_posted(), "MsgReq is posted");
+        assert!(!TlpType::MsgReqData.is_non_posted(), "MsgReqData is posted");
 
         // --- Completions (responses, not requests) ---
-        assert!(!TlpType::Cpl.is_non_posted(),                "Cpl is a response, not a request");
-        assert!(!TlpType::CplData.is_non_posted(),            "CplData is a response, not a request");
-        assert!(!TlpType::CplLocked.is_non_posted(),          "CplLocked is a response, not a request");
-        assert!(!TlpType::CplDataLocked.is_non_posted(),      "CplDataLocked is a response, not a request");
+        assert!(
+            !TlpType::Cpl.is_non_posted(),
+            "Cpl is a response, not a request"
+        );
+        assert!(
+            !TlpType::CplData.is_non_posted(),
+            "CplData is a response, not a request"
+        );
+        assert!(
+            !TlpType::CplLocked.is_non_posted(),
+            "CplLocked is a response, not a request"
+        );
+        assert!(
+            !TlpType::CplDataLocked.is_non_posted(),
+            "CplDataLocked is a response, not a request"
+        );
 
         // --- Prefixes (not transactions) ---
-        assert!(!TlpType::LocalTlpPrefix.is_non_posted(),     "LocalTlpPrefix is not a transaction");
-        assert!(!TlpType::EndToEndTlpPrefix.is_non_posted(),  "EndToEndTlpPrefix is not a transaction");
+        assert!(
+            !TlpType::LocalTlpPrefix.is_non_posted(),
+            "LocalTlpPrefix is not a transaction"
+        );
+        assert!(
+            !TlpType::EndToEndTlpPrefix.is_non_posted(),
+            "EndToEndTlpPrefix is not a transaction"
+        );
     }
 
     // ── atomic tier-A: real bytes through the full packet pipeline ─────────────
@@ -2141,7 +2501,7 @@ mod tests {
     #[test]
     fn atomic_fetchadd_3dw_type_and_fields() {
         const FMT_3DW_WITH_DATA: u8 = 0b010;
-        const TY_ATOM_FETCH:     u8 = 0b01100;
+        const TY_ATOM_FETCH: u8 = 0b01100;
 
         // DW1+DW2 as MemRequest3DW sees them (MSB0):
         //   requester_id [15:0]  = 0x1234
@@ -2155,22 +2515,26 @@ mod tests {
             0x89, 0xAB, 0xCD, 0xEF, // address32
         ];
 
-        let pkt = TlpPacket::new(mk_tlp(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &payload), TlpMode::NonFlit).unwrap();
+        let pkt = TlpPacket::new(
+            mk_tlp(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &payload),
+            TlpMode::NonFlit,
+        )
+        .unwrap();
 
         assert_eq!(pkt.tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
         assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
         let fmt = pkt.tlp_format().unwrap();
         let mr = new_mem_req(pkt.data().to_vec(), &fmt).unwrap();
-        assert_eq!(mr.req_id(),  0x1234);
-        assert_eq!(mr.tag(),     0x56);
+        assert_eq!(mr.req_id(), 0x1234);
+        assert_eq!(mr.tag(), 0x56);
         assert_eq!(mr.address(), 0x89AB_CDEF);
     }
 
     #[test]
     fn atomic_cas_4dw_type_and_fields() {
         const FMT_4DW_WITH_DATA: u8 = 0b011;
-        const TY_ATOM_CAS:       u8 = 0b01110;
+        const TY_ATOM_CAS: u8 = 0b01110;
 
         // DW1-DW3 as MemRequest4DW sees them (MSB0):
         //   requester_id [15:0]  = 0xBEEF
@@ -2184,15 +2548,19 @@ mod tests {
             0x55, 0x66, 0x77, 0x88, // address64 low DW
         ];
 
-        let pkt = TlpPacket::new(mk_tlp(FMT_4DW_WITH_DATA, TY_ATOM_CAS, &payload), TlpMode::NonFlit).unwrap();
+        let pkt = TlpPacket::new(
+            mk_tlp(FMT_4DW_WITH_DATA, TY_ATOM_CAS, &payload),
+            TlpMode::NonFlit,
+        )
+        .unwrap();
 
         assert_eq!(pkt.tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
         assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
         let fmt = pkt.tlp_format().unwrap();
         let mr = new_mem_req(pkt.data().to_vec(), &fmt).unwrap();
-        assert_eq!(mr.req_id(),  0xBEEF);
-        assert_eq!(mr.tag(),     0xA5);
+        assert_eq!(mr.req_id(), 0xBEEF);
+        assert_eq!(mr.tag(), 0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
     }
 
@@ -2210,13 +2578,13 @@ mod tests {
             0x00, 0x00, 0x00, 0x0A, // addend (W32)
         ];
         let pkt = TlpPacket::new(mk_tlp(0b010, 0b01100, &payload), TlpMode::NonFlit).unwrap();
-        let ar  = new_atomic_req(&pkt).unwrap();
+        let ar = new_atomic_req(&pkt).unwrap();
 
-        assert_eq!(ar.op(),       AtomicOp::FetchAdd);
-        assert_eq!(ar.width(),    AtomicWidth::W32);
-        assert_eq!(ar.req_id(),   0xDEAD);
-        assert_eq!(ar.tag(),      0x42);
-        assert_eq!(ar.address(),  0xC001_0004);
+        assert_eq!(ar.op(), AtomicOp::FetchAdd);
+        assert_eq!(ar.width(), AtomicWidth::W32);
+        assert_eq!(ar.req_id(), 0xDEAD);
+        assert_eq!(ar.tag(), 0x42);
+        assert_eq!(ar.address(), 0xC001_0004);
         assert_eq!(ar.operand0(), 0x0A);
         assert!(ar.operand1().is_none());
     }
@@ -2233,13 +2601,13 @@ mod tests {
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // addend (W64)
         ];
         let pkt = TlpPacket::new(mk_tlp(0b011, 0b01100, &payload), TlpMode::NonFlit).unwrap();
-        let ar  = new_atomic_req(&pkt).unwrap();
+        let ar = new_atomic_req(&pkt).unwrap();
 
-        assert_eq!(ar.op(),       AtomicOp::FetchAdd);
-        assert_eq!(ar.width(),    AtomicWidth::W64);
-        assert_eq!(ar.req_id(),   0x0042);
-        assert_eq!(ar.tag(),      0xBB);
-        assert_eq!(ar.address(),  0x0000_0001_0000_0000);
+        assert_eq!(ar.op(), AtomicOp::FetchAdd);
+        assert_eq!(ar.width(), AtomicWidth::W64);
+        assert_eq!(ar.req_id(), 0x0042);
+        assert_eq!(ar.tag(), 0xBB);
+        assert_eq!(ar.address(), 0x0000_0001_0000_0000);
         assert_eq!(ar.operand0(), 0xFFFF_FFFF_FFFF_FFFF);
         assert!(ar.operand1().is_none());
     }
@@ -2256,13 +2624,13 @@ mod tests {
             0xAB, 0xCD, 0xEF, 0x01, // new_value (W32)
         ];
         let pkt = TlpPacket::new(mk_tlp(0b010, 0b01101, &payload), TlpMode::NonFlit).unwrap();
-        let ar  = new_atomic_req(&pkt).unwrap();
+        let ar = new_atomic_req(&pkt).unwrap();
 
-        assert_eq!(ar.op(),       AtomicOp::Swap);
-        assert_eq!(ar.width(),    AtomicWidth::W32);
-        assert_eq!(ar.req_id(),   0x1111);
-        assert_eq!(ar.tag(),      0x05);
-        assert_eq!(ar.address(),  0xF000_0008);
+        assert_eq!(ar.op(), AtomicOp::Swap);
+        assert_eq!(ar.width(), AtomicWidth::W32);
+        assert_eq!(ar.req_id(), 0x1111);
+        assert_eq!(ar.tag(), 0x05);
+        assert_eq!(ar.address(), 0xF000_0008);
         assert_eq!(ar.operand0(), 0xABCD_EF01);
         assert!(ar.operand1().is_none());
     }
@@ -2281,13 +2649,13 @@ mod tests {
             0xDE, 0xAD, 0xBE, 0xEF, // swap    (W32)
         ];
         let pkt = TlpPacket::new(mk_tlp(0b010, 0b01110, &payload), TlpMode::NonFlit).unwrap();
-        let ar  = new_atomic_req(&pkt).unwrap();
+        let ar = new_atomic_req(&pkt).unwrap();
 
-        assert_eq!(ar.op(),       AtomicOp::CompareSwap);
-        assert_eq!(ar.width(),    AtomicWidth::W32);
-        assert_eq!(ar.req_id(),   0xABCD);
-        assert_eq!(ar.tag(),      0x07);
-        assert_eq!(ar.address(),  0x0000_4000);
+        assert_eq!(ar.op(), AtomicOp::CompareSwap);
+        assert_eq!(ar.width(), AtomicWidth::W32);
+        assert_eq!(ar.req_id(), 0xABCD);
+        assert_eq!(ar.tag(), 0x07);
+        assert_eq!(ar.address(), 0x0000_4000);
         assert_eq!(ar.operand0(), 0xCAFE_BABE);
         assert_eq!(ar.operand1(), Some(0xDEAD_BEEF));
     }
@@ -2306,13 +2674,13 @@ mod tests {
             0x03, 0x03, 0x03, 0x03, 0x04, 0x04, 0x04, 0x04, // swap    (W64)
         ];
         let pkt = TlpPacket::new(mk_tlp(0b011, 0b01110, &payload), TlpMode::NonFlit).unwrap();
-        let ar  = new_atomic_req(&pkt).unwrap();
+        let ar = new_atomic_req(&pkt).unwrap();
 
-        assert_eq!(ar.op(),       AtomicOp::CompareSwap);
-        assert_eq!(ar.width(),    AtomicWidth::W64);
-        assert_eq!(ar.req_id(),   0x1234);
-        assert_eq!(ar.tag(),      0xAA);
-        assert_eq!(ar.address(),  0xFFFF_FFFF_0000_0000);
+        assert_eq!(ar.op(), AtomicOp::CompareSwap);
+        assert_eq!(ar.width(), AtomicWidth::W64);
+        assert_eq!(ar.req_id(), 0x1234);
+        assert_eq!(ar.tag(), 0xAA);
+        assert_eq!(ar.address(), 0xFFFF_FFFF_0000_0000);
         assert_eq!(ar.operand0(), 0x0101_0101_0202_0202);
         assert_eq!(ar.operand1(), Some(0x0303_0303_0404_0404));
     }
@@ -2321,7 +2689,10 @@ mod tests {
     fn atomic_req_rejects_wrong_tlp_type() {
         // MemRead type is not an atomic — should get UnsupportedCombination
         let pkt = TlpPacket::new(mk_tlp(0b000, 0b00000, &[0u8; 16]), TlpMode::NonFlit).unwrap();
-        assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::UnsupportedCombination);
+        assert_eq!(
+            new_atomic_req(&pkt).err().unwrap(),
+            TlpError::UnsupportedCombination
+        );
     }
 
     #[test]
@@ -2329,7 +2700,10 @@ mod tests {
         // FetchAdd type with NoData3DW format is an invalid combo:
         // get_tlp_type() returns UnsupportedCombination, which propagates
         let pkt = TlpPacket::new(mk_tlp(0b000, 0b01100, &[0u8; 16]), TlpMode::NonFlit).unwrap();
-        assert_eq!(new_atomic_req(&pkt).err().unwrap(), TlpError::UnsupportedCombination);
+        assert_eq!(
+            new_atomic_req(&pkt).err().unwrap(),
+            TlpError::UnsupportedCombination
+        );
     }
 
     #[test]
@@ -2365,11 +2739,11 @@ mod tests {
         ];
         let pkt = mk_pkt(0b010, 0b01100, &data);
         let a = new_atomic_req(&pkt).unwrap();
-        assert_eq!(a.op(),       AtomicOp::FetchAdd);
-        assert_eq!(a.width(),    AtomicWidth::W32);
-        assert_eq!(a.req_id(),   0x0100);
-        assert_eq!(a.tag(),      0x01);
-        assert_eq!(a.address(),  0x0000_1000);
+        assert_eq!(a.op(), AtomicOp::FetchAdd);
+        assert_eq!(a.width(), AtomicWidth::W32);
+        assert_eq!(a.req_id(), 0x0100);
+        assert_eq!(a.tag(), 0x01);
+        assert_eq!(a.address(), 0x0000_1000);
         assert_eq!(a.operand0(), 7);
         assert!(a.operand1().is_none());
     }
@@ -2384,11 +2758,11 @@ mod tests {
         ];
         let pkt = mk_pkt(0b011, 0b01101, &data);
         let a = new_atomic_req(&pkt).unwrap();
-        assert_eq!(a.op(),       AtomicOp::Swap);
-        assert_eq!(a.width(),    AtomicWidth::W64);
-        assert_eq!(a.req_id(),   0xBEEF);
-        assert_eq!(a.tag(),      0xA5);
-        assert_eq!(a.address(),  0x0000_0001_0000_0000);
+        assert_eq!(a.op(), AtomicOp::Swap);
+        assert_eq!(a.width(), AtomicWidth::W64);
+        assert_eq!(a.req_id(), 0xBEEF);
+        assert_eq!(a.tag(), 0xA5);
+        assert_eq!(a.address(), 0x0000_0001_0000_0000);
         assert_eq!(a.operand0(), 0xDEAD_BEEF_CAFE_BABE);
         assert!(a.operand1().is_none());
     }
@@ -2404,11 +2778,11 @@ mod tests {
         ];
         let pkt = mk_pkt(0b010, 0b01110, &data);
         let a = new_atomic_req(&pkt).unwrap();
-        assert_eq!(a.op(),       AtomicOp::CompareSwap);
-        assert_eq!(a.width(),    AtomicWidth::W32);
-        assert_eq!(a.req_id(),   0xABCD);
-        assert_eq!(a.tag(),      0x07);
-        assert_eq!(a.address(),  0x0000_4000);
+        assert_eq!(a.op(), AtomicOp::CompareSwap);
+        assert_eq!(a.width(), AtomicWidth::W32);
+        assert_eq!(a.req_id(), 0xABCD);
+        assert_eq!(a.tag(), 0x07);
+        assert_eq!(a.address(), 0x0000_4000);
         assert_eq!(a.operand0(), 0xCAFE_BABE);
         assert_eq!(a.operand1(), Some(0xDEAD_BEEF));
     }
@@ -2431,10 +2805,7 @@ mod tests {
     fn completion_laddr_bit6_set() {
         // Lower Address = 64 (0x40) — bit 6 is the bit that was previously lost
         // DW2 byte 3: R=0, LowerAddr=0x40 → byte = 0x40
-        let bytes = vec![
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x40,
-        ];
+        let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40];
         let cmpl = new_cmpl_req(bytes);
         assert_eq!(cmpl.laddr(), 0x40);
     }
@@ -2443,10 +2814,7 @@ mod tests {
     fn completion_laddr_with_reserved_bit_set() {
         // R=1, LowerAddr=0x55 (85)
         // DW2 byte 3: 1_1010101 = 0xD5
-        let bytes = vec![
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0xD5,
-        ];
+        let bytes = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD5];
         let cmpl = new_cmpl_req(bytes);
         assert_eq!(cmpl.laddr(), 0x55);
     }
@@ -2510,9 +2878,7 @@ mod tests {
     fn message_dw3_dw4_all_bits_set() {
         // Both DW3 and DW4 = 0xFFFF_FFFF
         let bytes = vec![
-            0x00, 0x00, 0x00, 0x00,
-            0xFF, 0xFF, 0xFF, 0xFF,
-            0xFF, 0xFF, 0xFF, 0xFF,
+            0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
         ];
         let msg = new_msg_req(bytes);
         assert_eq!(msg.dw3(), 0xFFFF_FFFF);
@@ -2523,16 +2889,14 @@ mod tests {
     fn message_request_full_fields() {
         // req_id=0xABCD, tag=0x42, msg_code=0x7F, DW3=0x1234_5678, DW4=0x9ABC_DEF0
         let bytes = vec![
-            0xAB, 0xCD, 0x42, 0x7F,
-            0x12, 0x34, 0x56, 0x78,
-            0x9A, 0xBC, 0xDE, 0xF0,
+            0xAB, 0xCD, 0x42, 0x7F, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0,
         ];
         let msg = new_msg_req(bytes);
-        assert_eq!(msg.req_id(),   0xABCD);
-        assert_eq!(msg.tag(),      0x42);
+        assert_eq!(msg.req_id(), 0xABCD);
+        assert_eq!(msg.tag(), 0x42);
         assert_eq!(msg.msg_code(), 0x7F);
-        assert_eq!(msg.dw3(),      0x1234_5678);
-        assert_eq!(msg.dw4(),      0x9ABC_DEF0);
+        assert_eq!(msg.dw3(), 0x1234_5678);
+        assert_eq!(msg.dw4(), 0x9ABC_DEF0);
     }
 
     // ── Debug impls ───────────────────────────────────────────────────────────
@@ -2548,7 +2912,8 @@ mod tests {
 
     #[test]
     fn tlp_packet_debug() {
-        let pkt = TlpPacket::new(vec![0x40, 0x00, 0x00, 0x01, 0xDE, 0xAD], TlpMode::NonFlit).unwrap();
+        let pkt =
+            TlpPacket::new(vec![0x40, 0x00, 0x00, 0x01, 0xDE, 0xAD], TlpMode::NonFlit).unwrap();
         let s = format!("{:?}", pkt);
         assert!(s.contains("TlpPacket"));
         assert!(s.contains("data_len"));

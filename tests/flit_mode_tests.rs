@@ -31,142 +31,91 @@ use rtlp_lib::*;
 // ============================================================================
 
 /// Flit-mode NOP. Smallest possible header-base object (1 DW, no payload).
-pub const FM_NOP: [u8; 4] = [
-    0x00, 0x00, 0x00, 0x00,
-];
+pub const FM_NOP: [u8; 4] = [0x00, 0x00, 0x00, 0x00];
 
 /// Minimal 32-bit Memory Read Request. Length=1 DW, no OHC, no payload.
 pub const FM_MRD32_MIN: [u8; 12] = [
-    0x03, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
+    0x03, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 /// 32-bit Memory Read Request with OHC-A1 carrying PASID=0x12345, fdwbe=0xF, ldwbe=0x0.
 pub const FM_MRD32_A1_PASID: [u8; 16] = [
-    0x03, 0x01, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x01, 0x23, 0x45, 0x0F,
+    0x03, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x23, 0x45, 0x0F,
 ];
 
 /// Minimal 32-bit Memory Write Request. Length=1 DW, no OHC, payload=0xDEADBEEF.
 pub const FM_MWR32_MIN: [u8; 16] = [
-    0x40, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0xDE, 0xAD, 0xBE, 0xEF,
+    0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF,
 ];
 
 /// 32-bit Memory Write Request with OHC-A1. fdwbe=0x3 (partial-byte write).
 pub const FM_MWR32_PARTIAL_A1: [u8; 20] = [
-    0x40, 0x01, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x03,
+    0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
     0xAA, 0xBB, 0xCC, 0xDD,
 ];
 
 /// I/O Write Request with mandatory OHC-A2. fdwbe=0xF.
 pub const FM_IOWR_A2: [u8; 20] = [
-    0x42, 0x01, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x0F,
+    0x42, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F,
     0x10, 0x20, 0x30, 0x40,
 ];
 
 /// Type0 Configuration Write Request with mandatory OHC-A3. fdwbe=0xF.
 pub const FM_CFGWR0_A3: [u8; 20] = [
-    0x44, 0x01, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x0F,
+    0x44, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F,
     0x44, 0x33, 0x22, 0x11,
 ];
 
 /// Minimal UIO Memory Read Request (PCIe 6.1+ UIO). 4 DW base header, Length=2 DW, no payload.
 pub const FM_UIOMRD64_MIN: [u8; 16] = [
-    0x22, 0x00, 0x00, 0x02,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
+    0x22, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 /// Minimal UIO Memory Write Request (PCIe 6.1+ UIO). 4 DW base header, 2 DW payload.
 pub const FM_UIOMWR64_MIN: [u8; 24] = [
-    0x61, 0x00, 0x00, 0x02,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x11, 0x22, 0x33, 0x44,
-    0x55, 0x66, 0x77, 0x88,
+    0x61, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
 ];
 
 /// Message routed to RC, no data.
 pub const FM_MSG_TO_RC: [u8; 12] = [
-    0x30, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
+    0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 /// Message with data, routed to RC.
 pub const FM_MSGD_TO_RC: [u8; 16] = [
-    0x70, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0xAA, 0x55, 0xAA, 0x55,
+    0x70, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAA, 0x55, 0xAA, 0x55,
 ];
 
 /// 32-bit FetchAdd AtomicOp Request. Operand = 0x01000000.
 pub const FM_FETCHADD32: [u8; 16] = [
-    0x4C, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x01, 0x00, 0x00, 0x00,
+    0x4C, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
 ];
 
 /// 32-bit Compare-and-Swap AtomicOp Request. Compare=0x11111111, Swap=0x22222222.
 pub const FM_CAS32: [u8; 20] = [
-    0x4E, 0x00, 0x00, 0x02,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x11, 0x11, 0x11, 0x11,
+    0x4E, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x11, 0x11, 0x11,
     0x22, 0x22, 0x22, 0x22,
 ];
 
 /// 32-bit Deferrable Memory Write Request.
 pub const FM_DMWR32: [u8; 16] = [
-    0x5B, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0xC0, 0xFF, 0xEE, 0x00,
+    0x5B, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xFF, 0xEE, 0x00,
 ];
 
 /// Packed stream fragment: NOP + MRd32 + MWr32 + UIOMRd64 back-to-back.
 pub const FM_STREAM_FRAGMENT_0: [u8; 48] = [
     // NOP (4 bytes, offset 0)
-    0x00, 0x00, 0x00, 0x00,
-    // MRd32 (12 bytes, offset 4)
-    0x03, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, // MRd32 (12 bytes, offset 4)
+    0x03, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     // MWr32 (16 bytes, offset 16)
-    0x40, 0x00, 0x00, 0x01,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0xDE, 0xAD, 0xBE, 0xEF,
+    0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF,
     // UIOMRd64 (16 bytes, offset 32)
-    0x22, 0x00, 0x00, 0x02,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
+    0x22, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 /// Local TLP Prefix token (Appendix A — not a standalone transaction).
-pub const FM_LOCAL_PREFIX_ONLY: [u8; 4] = [
-    0x8D, 0x00, 0x00, 0x00,
-];
+pub const FM_LOCAL_PREFIX_ONLY: [u8; 4] = [0x8D, 0x00, 0x00, 0x00];
 
 // ============================================================================
 // Tier 0 — Regression guards
@@ -204,27 +153,30 @@ fn flit_header_new_returns_not_implemented() {
 #[test]
 fn flit_all_fm_vectors_parse_to_expected_type() {
     let cases: &[(&[u8], FlitTlpType)] = &[
-        (&FM_NOP,               FlitTlpType::Nop),
-        (&FM_MRD32_MIN,         FlitTlpType::MemRead32),
-        (&FM_MRD32_A1_PASID,    FlitTlpType::MemRead32),
-        (&FM_MWR32_MIN,         FlitTlpType::MemWrite32),
-        (&FM_MWR32_PARTIAL_A1,  FlitTlpType::MemWrite32),
-        (&FM_IOWR_A2,           FlitTlpType::IoWrite),
-        (&FM_CFGWR0_A3,         FlitTlpType::CfgWrite0),
-        (&FM_UIOMRD64_MIN,      FlitTlpType::UioMemRead),
-        (&FM_UIOMWR64_MIN,      FlitTlpType::UioMemWrite),
-        (&FM_MSG_TO_RC,         FlitTlpType::MsgToRc),
-        (&FM_MSGD_TO_RC,        FlitTlpType::MsgDToRc),
-        (&FM_FETCHADD32,        FlitTlpType::FetchAdd32),
-        (&FM_CAS32,             FlitTlpType::CompareSwap32),
-        (&FM_DMWR32,            FlitTlpType::DeferrableMemWrite32),
+        (&FM_NOP, FlitTlpType::Nop),
+        (&FM_MRD32_MIN, FlitTlpType::MemRead32),
+        (&FM_MRD32_A1_PASID, FlitTlpType::MemRead32),
+        (&FM_MWR32_MIN, FlitTlpType::MemWrite32),
+        (&FM_MWR32_PARTIAL_A1, FlitTlpType::MemWrite32),
+        (&FM_IOWR_A2, FlitTlpType::IoWrite),
+        (&FM_CFGWR0_A3, FlitTlpType::CfgWrite0),
+        (&FM_UIOMRD64_MIN, FlitTlpType::UioMemRead),
+        (&FM_UIOMWR64_MIN, FlitTlpType::UioMemWrite),
+        (&FM_MSG_TO_RC, FlitTlpType::MsgToRc),
+        (&FM_MSGD_TO_RC, FlitTlpType::MsgDToRc),
+        (&FM_FETCHADD32, FlitTlpType::FetchAdd32),
+        (&FM_CAS32, FlitTlpType::CompareSwap32),
+        (&FM_DMWR32, FlitTlpType::DeferrableMemWrite32),
         (&FM_LOCAL_PREFIX_ONLY, FlitTlpType::LocalTlpPrefix),
     ];
     for (bytes, expected) in cases {
         let dw0 = FlitDW0::from_dw0(bytes)
             .unwrap_or_else(|e| panic!("FM_* failed to parse: {:?} (byte0={:#04x})", e, bytes[0]));
-        assert_eq!(dw0.tlp_type, *expected,
-            "byte0={:#04x} decoded to {:?}, expected {:?}", bytes[0], dw0.tlp_type, expected);
+        assert_eq!(
+            dw0.tlp_type, *expected,
+            "byte0={:#04x} decoded to {:?}, expected {:?}",
+            bytes[0], dw0.tlp_type, expected
+        );
     }
 }
 
@@ -233,19 +185,23 @@ fn flit_all_fm_vectors_parse_to_expected_type() {
 fn flit_all_fm_vectors_parse_with_correct_ohc() {
     // (vector, expected OHC bitmap value)
     let cases: &[(&[u8], u8, &str)] = &[
-        (&FM_NOP,               0, "FM_NOP"),
-        (&FM_MRD32_MIN,         0, "FM_MRD32_MIN"),
-        (&FM_MWR32_MIN,         0, "FM_MWR32_MIN"),
-        (&FM_MRD32_A1_PASID,    1, "FM_MRD32_A1_PASID"),   // OHC-A1
-        (&FM_MWR32_PARTIAL_A1,  1, "FM_MWR32_PARTIAL_A1"), // OHC-A1
-        (&FM_IOWR_A2,           1, "FM_IOWR_A2"),           // OHC-A2
-        (&FM_CFGWR0_A3,         1, "FM_CFGWR0_A3"),         // OHC-A3
+        (&FM_NOP, 0, "FM_NOP"),
+        (&FM_MRD32_MIN, 0, "FM_MRD32_MIN"),
+        (&FM_MWR32_MIN, 0, "FM_MWR32_MIN"),
+        (&FM_MRD32_A1_PASID, 1, "FM_MRD32_A1_PASID"), // OHC-A1
+        (&FM_MWR32_PARTIAL_A1, 1, "FM_MWR32_PARTIAL_A1"), // OHC-A1
+        (&FM_IOWR_A2, 1, "FM_IOWR_A2"),               // OHC-A2
+        (&FM_CFGWR0_A3, 1, "FM_CFGWR0_A3"),           // OHC-A3
     ];
     for (bytes, expected_ohc, name) in cases {
         let dw0 = FlitDW0::from_dw0(bytes).unwrap();
         assert_eq!(dw0.ohc, *expected_ohc, "{} ohc mismatch", name);
-        assert_eq!(dw0.ohc_count(), (*expected_ohc).count_ones() as u8,
-            "{} ohc_count mismatch", name);
+        assert_eq!(
+            dw0.ohc_count(),
+            (*expected_ohc).count_ones() as u8,
+            "{} ohc_count mismatch",
+            name
+        );
     }
 }
 
@@ -257,10 +213,10 @@ fn flit_all_fm_vectors_parse_with_correct_ohc() {
 fn flit_t1_nop_dw0_fields() {
     let dw0 = FlitDW0::from_dw0(&FM_NOP).unwrap();
     assert_eq!(dw0.tlp_type, FlitTlpType::Nop);
-    assert_eq!(dw0.tc,     0);
-    assert_eq!(dw0.ohc,    0);
-    assert_eq!(dw0.ts,     0);
-    assert_eq!(dw0.attr,   0);
+    assert_eq!(dw0.tc, 0);
+    assert_eq!(dw0.ohc, 0);
+    assert_eq!(dw0.ts, 0);
+    assert_eq!(dw0.attr, 0);
     assert_eq!(dw0.length, 0);
 }
 
@@ -269,8 +225,8 @@ fn flit_t1_mrd32_dw0_fields() {
     // FM_MRD32_MIN = [0x03, 0x00, 0x00, 0x01]
     let dw0 = FlitDW0::from_dw0(&FM_MRD32_MIN).unwrap();
     assert_eq!(dw0.tlp_type, FlitTlpType::MemRead32);
-    assert_eq!(dw0.tc,     0);
-    assert_eq!(dw0.ohc,    0);
+    assert_eq!(dw0.tc, 0);
+    assert_eq!(dw0.ohc, 0);
     assert_eq!(dw0.length, 1); // Length field = 1 DW (but no actual payload — it's a read)
 }
 
@@ -289,8 +245,8 @@ fn flit_t1_mwr32_dw0_fields() {
     // FM_MWR32_MIN = [0x40, 0x00, 0x00, 0x01]
     let dw0 = FlitDW0::from_dw0(&FM_MWR32_MIN).unwrap();
     assert_eq!(dw0.tlp_type, FlitTlpType::MemWrite32);
-    assert_eq!(dw0.tc,     0);
-    assert_eq!(dw0.ohc,    0);
+    assert_eq!(dw0.tc, 0);
+    assert_eq!(dw0.ohc, 0);
     assert_eq!(dw0.length, 1);
 }
 
@@ -299,7 +255,7 @@ fn flit_t1_uiomrd64_dw0_fields() {
     // FM_UIOMRD64_MIN = [0x22, 0x00, 0x00, 0x02]
     let dw0 = FlitDW0::from_dw0(&FM_UIOMRD64_MIN).unwrap();
     assert_eq!(dw0.tlp_type, FlitTlpType::UioMemRead);
-    assert_eq!(dw0.ohc,    0);
+    assert_eq!(dw0.ohc, 0);
     assert_eq!(dw0.length, 2);
 }
 
@@ -576,8 +532,8 @@ fn flit_t4_stream_fragment_0_offsets() {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!(entries.len(), 4);
-    assert_eq!(entries[0], (0,  FlitTlpType::Nop,       4));
-    assert_eq!(entries[1], (4,  FlitTlpType::MemRead32, 12));
+    assert_eq!(entries[0], (0, FlitTlpType::Nop, 4));
+    assert_eq!(entries[1], (4, FlitTlpType::MemRead32, 12));
     assert_eq!(entries[2], (16, FlitTlpType::MemWrite32, 16));
     assert_eq!(entries[3], (32, FlitTlpType::UioMemRead, 16));
 }
@@ -624,10 +580,13 @@ fn flit_t5_end_to_end_cas32() {
     // CAS32 flit: 3 DW header + 2 DW payload (compare + swap)
     let pkt = TlpPacket::new(FM_CAS32.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.flit_type(), Some(FlitTlpType::CompareSwap32));
-    assert_eq!(pkt.data(), [
-        0x11, 0x11, 0x11, 0x11, // compare
-        0x22, 0x22, 0x22, 0x22, // swap
-    ]);
+    assert_eq!(
+        pkt.data(),
+        [
+            0x11, 0x11, 0x11, 0x11, // compare
+            0x22, 0x22, 0x22, 0x22, // swap
+        ]
+    );
 }
 
 #[test]
@@ -643,10 +602,10 @@ fn flit_t5_end_to_end_uiomwr64() {
     // UIOMWr64 flit: 4 DW header + 2 DW payload
     let pkt = TlpPacket::new(FM_UIOMWR64_MIN.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.flit_type(), Some(FlitTlpType::UioMemWrite));
-    assert_eq!(pkt.data(), [
-        0x11, 0x22, 0x33, 0x44,
-        0x55, 0x66, 0x77, 0x88,
-    ]);
+    assert_eq!(
+        pkt.data(),
+        [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,]
+    );
 }
 
 #[test]
@@ -680,7 +639,10 @@ fn flit_t5_fetchadd32_operand_value_in_payload() {
     // Payload = 3 DW header consumed, remaining = [0x01, 0x00, 0x00, 0x00]
     assert_eq!(pkt.data().len(), 4, "FetchAdd32 has 1 DW operand");
     let operand = u32::from_be_bytes([pkt.data()[0], pkt.data()[1], pkt.data()[2], pkt.data()[3]]);
-    assert_eq!(operand, 0x01000000, "FM_FETCHADD32 addend should be 0x01000000");
+    assert_eq!(
+        operand, 0x01000000,
+        "FM_FETCHADD32 addend should be 0x01000000"
+    );
 }
 
 #[test]
@@ -689,10 +651,13 @@ fn flit_t5_cas32_operand_values_in_payload() {
     let pkt = TlpPacket::new(FM_CAS32.to_vec(), TlpMode::Flit).unwrap();
     assert_eq!(pkt.flit_type(), Some(FlitTlpType::CompareSwap32));
     // Payload = 3 DW header consumed, remaining = 8 bytes (compare + swap)
-    assert_eq!(pkt.data().len(), 8, "CAS32 has 2 DW payload (compare + swap)");
+    assert_eq!(
+        pkt.data().len(),
+        8,
+        "CAS32 has 2 DW payload (compare + swap)"
+    );
     let compare = u32::from_be_bytes([pkt.data()[0], pkt.data()[1], pkt.data()[2], pkt.data()[3]]);
-    let swap    = u32::from_be_bytes([pkt.data()[4], pkt.data()[5], pkt.data()[6], pkt.data()[7]]);
+    let swap = u32::from_be_bytes([pkt.data()[4], pkt.data()[5], pkt.data()[6], pkt.data()[7]]);
     assert_eq!(compare, 0x11111111, "FM_CAS32 compare operand");
-    assert_eq!(swap,    0x22222222, "FM_CAS32 swap operand");
+    assert_eq!(swap, 0x22222222, "FM_CAS32 swap operand");
 }
-
