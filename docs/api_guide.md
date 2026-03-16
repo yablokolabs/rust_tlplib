@@ -521,7 +521,7 @@ data, so the migration is:
 let bytes: Vec<u8> = pkt.get_data();
 let mr = new_mem_req(bytes, &fmt)?;
 
-// After (zero additional allocation):
+// After (allocation moved into `new_mem_req`; no explicit .to_vec() at call site):
 let mr = new_mem_req(pkt.data(), &fmt)?;
 ```
 

@@ -173,7 +173,7 @@ assert_eq!(cr.dev_nr(), 1);
 
 ```text
 4A 00 20 40   20 01 00 40   12 34 AB 10   DE AD BE EF
-└──── DW0 ─┘ └──── DW2 ─┘ └──── DW3 ─┘ └─ payload ─┘
+└──── DW0 ─┘ └──── DW1 ─┘ └──── DW2 ─┘ └─ payload ─┘
  Fmt=010      cmpl_id=0x2001 req_id=0x1234  data DW
  Type=01010   bcnt=0x040     tag=0xAB
  CplWithData  status=OK      laddr=0x10
@@ -183,8 +183,8 @@ assert_eq!(cr.dev_nr(), 1);
 ```rust
 let bytes = vec![
     0x4A, 0x00, 0x20, 0x40,  // DW0: CplData, length=1
-    0x20, 0x01, 0x00, 0x40,  // DW2: cmpl_id=0x2001, status=0, byte_cnt=0x040
-    0x12, 0x34, 0xAB, 0x10,  // DW3: req_id=0x1234, tag=0xAB, laddr=0x10
+    0x20, 0x01, 0x00, 0x40,  // DW1: cmpl_id=0x2001, status=0, byte_cnt=0x040
+    0x12, 0x34, 0xAB, 0x10,  // DW2: req_id=0x1234, tag=0xAB, laddr=0x10
     0xDE, 0xAD, 0xBE, 0xEF,  // payload (returned data)
 ];
 let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();

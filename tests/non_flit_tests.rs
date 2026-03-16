@@ -376,7 +376,7 @@ fn msg_req_data_all_six_routing_subtypes_decode() {
 
 #[test]
 fn msg_req_end_to_end_path_with_new_msg_req() {
-    // Full end-to-end: packet decode → get_tlp_type() → new_msg_req() → field access
+    // Full end-to-end: packet decode -> tlp_type() -> new_msg_req(pkt.data()) -> field access
     // Fmt=000, Type=10000 (route to RC) → byte0 = 0x10
     // DW1: req_id=0xBEEF, tag=0xA5, msg_code=0x7E
     // DW2: route word (zero)

@@ -618,7 +618,7 @@ fn flit_t5_nop_has_no_data() {
 
 #[test]
 fn flit_t5_nonflit_packet_get_flit_type_returns_none() {
-    // Non-flit packets must return None from get_flit_type()
+    // Non-flit packets must return None from flit_type()
     let pkt = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x01], TlpMode::NonFlit).unwrap();
     assert_eq!(pkt.flit_type(), None);
 }

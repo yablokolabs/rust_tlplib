@@ -90,9 +90,14 @@ println!("{:?}", pkt);
 
 ## Breaking Changes
 
-**None.** All deprecated `get_*` aliases remain functional.
+**None in v0.5.0.** All deprecated `get_*` aliases remain functional.
 `TlpMode::Flit` and `FlitTlpType` are `#[non_exhaustive]` — future PCIe spec
 additions will not be breaking changes.
+
+> **Upgrading from v0.3.x or earlier?** The constructor signature changed in
+> **v0.4.0** (not this release): `TlpPacket::new(bytes)` became
+> `TlpPacket::new(bytes, TlpMode::NonFlit)`. Update any call sites that omit
+> the framing-mode argument. v0.5.0 does not change this signature further.
 
 ---
 
