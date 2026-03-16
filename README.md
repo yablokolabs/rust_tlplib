@@ -47,40 +47,51 @@ let bytes = vec![
 ];
 let packet = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 
-let tlp_type   = packet.get_tlp_type().unwrap();
-let tlp_format = packet.get_tlp_format().unwrap();
+// mode() tells you which parsing surface to use
+match packet.mode() {
+    TlpMode::NonFlit => {
+        let tlp_type   = packet.tlp_type().unwrap();
+        let tlp_format = packet.tlp_format().unwrap();
 
-match tlp_type {
-    TlpType::MemReadReq | TlpType::MemWriteReq |
-    TlpType::MemReadLockReq |
-    TlpType::DeferrableMemWriteReq |
-    TlpType::IOReadReq | TlpType::IOWriteReq => {
-        let mr = new_mem_req(packet.get_data(), &tlp_format).unwrap();
-        println!("req_id=0x{:04X}  tag=0x{:02X}  addr=0x{:X}",
-                 mr.req_id(), mr.tag(), mr.address());
+        match tlp_type {
+            TlpType::MemReadReq | TlpType::MemWriteReq |
+            TlpType::MemReadLockReq |
+            TlpType::DeferrableMemWriteReq |
+            TlpType::IOReadReq | TlpType::IOWriteReq => {
+                // data() returns &[u8] — no allocation, passes directly to new_mem_req
+                let mr = new_mem_req(packet.data(), &tlp_format).unwrap();
+                println!("req_id=0x{:04X}  tag=0x{:02X}  addr=0x{:X}",
+                         mr.req_id(), mr.tag(), mr.address());
+            }
+            TlpType::FetchAddAtomicOpReq |
+            TlpType::SwapAtomicOpReq |
+            TlpType::CompareSwapAtomicOpReq => {
+                let ar = new_atomic_req(&packet).unwrap();
+                println!("atomic {:?} operand0=0x{:X}", ar.op(), ar.operand0());
+            }
+            TlpType::ConfType0ReadReq | TlpType::ConfType0WriteReq |
+            TlpType::ConfType1ReadReq | TlpType::ConfType1WriteReq => {
+                let cr = new_conf_req(packet.data());  // accepts &[u8] directly
+                println!("config bus={} dev={} func={}",
+                         cr.bus_nr(), cr.dev_nr(), cr.func_nr());
+            }
+            TlpType::Cpl | TlpType::CplData |
+            TlpType::CplLocked | TlpType::CplDataLocked => {
+                let cpl = new_cmpl_req(packet.data());
+                println!("completion status={}", cpl.cmpl_stat());
+            }
+            TlpType::MsgReq | TlpType::MsgReqData => {
+                let msg = new_msg_req(packet.data());
+                println!("message code=0x{:02X}", msg.msg_code());
+            }
+            _ => println!("TLP type: {:?}", tlp_type),
+        }
     }
-    TlpType::FetchAddAtomicOpReq |
-    TlpType::SwapAtomicOpReq |
-    TlpType::CompareSwapAtomicOpReq => {
-        let ar = new_atomic_req(&packet).unwrap();
-        println!("atomic {:?} operand0=0x{:X}", ar.op(), ar.operand0());
+    TlpMode::Flit => {
+        // Use flit_type() for flit-mode packets
+        println!("flit type: {:?}", packet.flit_type());
     }
-    TlpType::ConfType0ReadReq | TlpType::ConfType0WriteReq |
-    TlpType::ConfType1ReadReq | TlpType::ConfType1WriteReq => {
-        let cr = new_conf_req(packet.get_data(), &tlp_format);
-        println!("config bus={} dev={} func={}",
-                 cr.bus_nr(), cr.dev_nr(), cr.func_nr());
-    }
-    TlpType::Cpl | TlpType::CplData |
-    TlpType::CplLocked | TlpType::CplDataLocked => {
-        let cpl = new_cmpl_req(packet.get_data(), &tlp_format);
-        println!("completion status={}", cpl.cmpl_stat());
-    }
-    TlpType::MsgReq | TlpType::MsgReqData => {
-        let msg = new_msg_req(packet.get_data(), &tlp_format);
-        println!("message code=0x{:02X}", msg.msg_code());
-    }
-    _ => println!("TLP type: {:?}", tlp_type),
+    _ => {}
 }
 ```
 
@@ -106,6 +117,22 @@ assert!(!TlpType::MemWriteReq.is_non_posted());   // posted
 | `TlpPacket` | Full packet: DW0 header + remaining data bytes |
 | `TlpPacketHeader` | DW0-only wrapper with accessor methods for every header field |
 | `TlpMode` | Framing mode: `NonFlit` (PCIe 1–5) or `Flit` (PCIe 6.x) |
+
+**Key `TlpPacket` methods:**
+
+| Method | Returns | Notes |
+|---|---|---|
+| `mode()` | `TlpMode` | Explicit framing mode; use to dispatch between API surfaces |
+| `tlp_type()` | `Result<TlpType, TlpError>` | Non-flit only; returns `Err(NotImplemented)` for flit |
+| `tlp_format()` | `Result<TlpFmt, TlpError>` | Non-flit only |
+| `flit_type()` | `Option<FlitTlpType>` | Flit only; `None` for non-flit |
+| `header()` | `&TlpPacketHeader` | Non-flit only (returns dummy zeros for flit) |
+| `data()` | `&[u8]` | Payload bytes after DW0; borrows from the packet |
+
+**Other core types:**
+
+| Type | Description |
+|---|---|
 | `TlpFmt` | Format enum: `NoDataHeader3DW`, `NoDataHeader4DW`, `WithDataHeader3DW`, `WithDataHeader4DW`, `TlpPrefix` |
 | `TlpType` | 21-variant enum covering all decoded non-flit TLP types |
 | `TlpError` | `InvalidFormat`, `InvalidType`, `UnsupportedCombination`, `InvalidLength`, `NotImplemented`, `MissingMandatoryOhc` |
@@ -125,7 +152,8 @@ use rtlp_lib::{TlpPacket, TlpMode, FlitStreamWalker, FlitTlpType};
 // Parse a single flit TLP
 let nop_bytes = vec![0x00u8, 0x00, 0x00, 0x00];
 let pkt = TlpPacket::new(nop_bytes, TlpMode::Flit).unwrap();
-assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
+assert_eq!(pkt.flit_type(), Some(FlitTlpType::Nop));
+assert_eq!(pkt.mode(), TlpMode::Flit);  // explicit mode check
 
 // Walk a packed stream of back-to-back flit TLPs
 let stream: &[u8] = &[/* packed bytes */];
@@ -140,10 +168,13 @@ for result in FlitStreamWalker::new(stream) {
 | Trait | Fields | Constructor |
 |---|---|---|
 | `MemRequest` | `address()`, `req_id()`, `tag()`, `ldwbe()`, `fdwbe()` | `new_mem_req(bytes, &fmt)` |
-| `ConfigurationRequest` | `req_id()`, `tag()`, `bus_nr()`, `dev_nr()`, `func_nr()`, `ext_reg_nr()`, `reg_nr()` | `new_conf_req(bytes, &fmt)` |
-| `CompletionRequest` | `cmpl_id()`, `cmpl_stat()`, `bcm()`, `byte_cnt()`, `req_id()`, `tag()`, `laddr()` | `new_cmpl_req(bytes, &fmt)` |
-| `MessageRequest` | `req_id()`, `tag()`, `msg_code()`, `dw3()`, `dw4()` | `new_msg_req(bytes, &fmt)` |
+| `ConfigurationRequest` | `req_id()`, `tag()`, `bus_nr()`, `dev_nr()`, `func_nr()`, `ext_reg_nr()`, `reg_nr()` | `new_conf_req(bytes)` |
+| `CompletionRequest` | `cmpl_id()`, `cmpl_stat()`, `bcm()`, `byte_cnt()`, `req_id()`, `tag()`, `laddr()` | `new_cmpl_req(bytes)` |
+| `MessageRequest` | `req_id()`, `tag()`, `msg_code()`, `dw3()`, `dw4()` | `new_msg_req(bytes)` |
 | `AtomicRequest` | `op()`, `width()`, `req_id()`, `tag()`, `address()`, `operand0()`, `operand1()` | `new_atomic_req(&pkt)` |
+
+> **Note:** All `bytes` parameters accept `impl Into<Vec<u8>>` — you can pass `pkt.data()` (`&[u8]`)
+> directly without calling `.to_vec()`. Only `new_mem_req` additionally requires `&TlpFmt`.
 
 ### Atomic-Specific Types
 
@@ -167,18 +198,18 @@ Every decoding step returns `Result<_, TlpError>`:
 
 ## Tests
 
-The crate has **180 passing tests** (0 ignored):
+The crate has **212 passing tests** (0 ignored):
 
 | Category | File | Passes | Ignored |
 |---|---|---|---|
-| Unit tests | `src/lib.rs` | 51 | 0 |
-| API contract tests | `tests/api_tests.rs` | 64 | 0 |
-| Non-flit integration tests | `tests/non_flit_tests.rs` | 16 | 0 |
-| Flit mode tests | `tests/flit_mode_tests.rs` | 42 | 0 |
-| Doc tests | `src/lib.rs` | 7 | 0 |
+| Unit tests | `src/lib.rs` | 56 | 0 |
+| API contract tests | `tests/api_tests.rs` | 77 | 0 |
+| Non-flit integration tests | `tests/non_flit_tests.rs` | 25 | 0 |
+| Flit mode tests | `tests/flit_mode_tests.rs` | 45 | 0 |
+| Doc tests | `src/lib.rs` | 9 | 0 |
 
 ```bash
-cargo test                        # run all 180 tests
+cargo test                        # run all 212 tests
 cargo test --lib                  # unit tests only
 cargo test --test non_flit_tests  # non-flit integration tests only
 cargo test --test flit_mode_tests # flit mode tests (all tiers)
@@ -189,9 +220,14 @@ See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descript
 
 ## Documentation
 
-The documentation of the released version is available on
-[docs.rs](https://docs.rs/rtlp-lib).
-To generate current documentation locally: `cargo doc --open`
+- **[docs/api_guide.md](docs/api_guide.md)** — user-facing guide: parsing flow,
+  mode dispatch, ownership/lifetimes, error handling, deprecated-API migration,
+  and how to test your own code against the library.
+- **[TESTS.md](TESTS.md)** — test structure, tier descriptions, FM_* byte-vector
+  constants reference, and running individual test suites.
+- **[tlp.md](tlp.md)** — PCIe TLP encoding reference with byte-level examples.
+- **[docs.rs](https://docs.rs/rtlp-lib)** — published rustdoc for the released version.
+- `cargo doc --open` — rustdoc for the current local build.
 
 ## License
 

@@ -12,7 +12,7 @@ This document describes the test structure for the rtlp-lib crate.
 
 **Location:** `#[cfg(test)] mod tests` inside `src/lib.rs`
 
-**Test count: 52**
+**Test count: 56**
 
 Categories:
 - `TlpHeader` bitfield parsing (all-zeros, all-ones, bit-position verification)
@@ -27,6 +27,8 @@ Categories:
 - `TlpError::NotImplemented` distinctness
 - `TlpMode` derive traits (Debug, Clone, Copy, PartialEq)
 - `is_non_posted()` exhaustive coverage — all 21 `TlpType` variants
+- `packet_mode_returns_correct_mode` — `TlpPacket::mode()` returns `NonFlit`/`Flit` correctly
+- `tlp_packet_debug` / `tlp_packet_debug_flit` / `tlp_packet_header_debug` — `Debug` formatting for both packet types
 
 **Why separate:** These tests use `TlpHeader` which is an internal implementation detail, not part of the public API.
 
@@ -75,7 +77,7 @@ All calls pass `TlpMode::NonFlit` explicitly.
 **Purpose:** Ensure the public API remains stable and catch breaking changes.  
 Mode-agnostic — tests API surface only, not behavior.
 
-**Test count: 67**
+**Test count: 77**
 
 Categories:
 - `TlpError` enum — all variants including `NotImplemented`, `MissingMandatoryOhc`, Display, PartialEq, `std::error::Error`
@@ -83,17 +85,19 @@ Categories:
 - `TlpMode::Flit` — now implemented for `TlpPacket::new()`; `TlpPacketHeader::new()` still returns `NotImplemented`
 - `TlpFmt` enum — all variants, `TryFrom<u32>` valid and invalid values
 - `TlpType` enum — all 21 variants, Debug, PartialEq
-- `TlpPacket` — constructor, `get_tlp_type()`, `get_tlp_format()`, `data()` (new), `get_data()` (deprecated, backward-compat)
-- `TlpPacketHeader` — constructor, `get_tlp_type()`
+- `TlpPacket` — constructor, `tlp_type()`, `tlp_format()`, `data()`, `mode()`
+- `TlpPacketHeader` — constructor, `tlp_type()`
 - `MemRequest` trait — 3DW and 4DW struct accessibility and method types
 - `ConfigurationRequest` trait — struct and method types
 - `CompletionRequest` trait — struct and method types
 - `MessageRequest` trait — struct and method types
 - `AtomicOp` / `AtomicWidth` — enum variants, Debug, PartialEq
 - Factory functions — `new_mem_req`, `new_conf_req`, `new_cmpl_req`, `new_msg_req`, `new_atomic_req`
-- API stability compilation test — all public types and functions
+- API stability compilation test — all public types and functions (uses concrete `vec![]` calls for `impl Into<Vec<u8>>` factory fns)
+- **`mode()` tests** — `tlp_packet_mode_returns_correct_mode`, `tlp_packet_mode_consistent_with_flit_type`
+- **Backward compat tests** (`#[allow(deprecated)]`) — one test per deprecated `get_*` alias verifying it delegates correctly: `get_tlp_type`, `get_tlp_format`, `get_flit_type`, `get_header`, `get_data`
+- **Debug trait tests** — `tlp_packet_implements_debug`, `tlp_packet_implements_debug_flit`, `tlp_packet_header_implements_debug`
 - Edge cases — minimum size, empty data, payload preservation
-- `tlp_packet_data_method_exists` — verifies the new `data()` API
 
 **Why separate:** These serve as a living contract specification. A failure indicates a breaking API change.
 
@@ -129,7 +133,7 @@ Implemented: `FlitOhcA::from_bytes()` + `FlitDW0::validate_mandatory_ohc()` + `T
 Implemented: `FlitStreamWalker` iterator in `src/lib.rs`
 
 #### Tier 5 — End-to-end `TlpMode::Flit` pipeline ✅ (10 tests — implemented)
-Implemented: `TlpPacket::new_flit()` + `get_flit_type()`
+Implemented: `TlpPacket::new_flit()` + `flit_type()`
 
 Includes atomic operand-value verification for `FM_FETCHADD32` (operand=0x01000000) and `FM_CAS32` (compare=0x11111111, swap=0x22222222).
 
@@ -162,12 +166,14 @@ For design rationale see `docs/flit_mode_test_plan.md`.
 
 **Purpose:** Ensure examples in doc comments compile and run correctly.
 
-**Test count: 7**
+**Test count: 9**
 
 Tests embedded in `src/lib.rs` doc comments:
 - `TlpPacket` usage example
+- `TlpPacket::mode()` usage example (includes `_ => {}` wildcard for `#[non_exhaustive]`)
+- `TlpType::is_posted()` usage example
 - `new_mem_req` usage example
-- `new_conf_req` usage example (updated: 12-byte input, uses `data().to_vec()`)
+- `new_conf_req` usage example (uses `data()` directly — no `.to_vec()`)
 - `new_cmpl_req` usage example
 - `new_msg_req` usage example
 - `new_atomic_req` usage example
@@ -179,12 +185,12 @@ Tests embedded in `src/lib.rs` doc comments:
 
 | Test Type | Location | Passes | Ignored | Purpose |
 |---|---|---|---|---|
-| Unit Tests | `src/lib.rs` | 52 | 0 | Internal implementation |
+| Unit Tests | `src/lib.rs` | 56 | 0 | Internal implementation |
 | Non-Flit Integration | `tests/non_flit_tests.rs` | 25 | 0 | PCIe 1–5 functional behavior |
-| API Contract | `tests/api_tests.rs` | 67 | 0 | Public API stability |
+| API Contract | `tests/api_tests.rs` | 77 | 0 | Public API stability |
 | Flit Mode | `tests/flit_mode_tests.rs` | 45 | 0 | PCIe 6.x — all tiers implemented |
-| Doc Tests | `src/lib.rs` | 7 | 0 | Documentation examples |
-| **Total** | | **196** | **0** | |
+| Doc Tests | `src/lib.rs` | 9 | 0 | Documentation examples |
+| **Total** | | **212** | **0** | |
 
 > All flit mode tiers (0–5) are implemented. Zero `#[ignore]` tests remain.
 
@@ -223,7 +229,7 @@ cargo test -- --nocapture
 2. **Mode Separation** — non-flit and flit tests are in separate files with explicit scoping
 3. **Incremental Plan** — flit mode tiers document implementation history
 4. **Parser-Driven Vector Tests** — `flit_all_fm_vectors_parse_to_expected_type` catches spec errors in FM_* constants
-5. **Always Green** — all 196 tests pass at every commit (0 ignored)
+5. **Always Green** — all 212 tests pass at every commit (0 ignored)
 
 ---
 
@@ -235,6 +241,6 @@ All tiers complete — no `#[ignore]` tests remain:
 2. ~~**Tier 2** — `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` + `has_data_payload()`~~ ✅ Done (v0.5.0)
 3. ~~**Tier 3** — `FlitOhcA` + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`~~ ✅ Done (v0.4.1)
 4. ~~**Tier 4** — `FlitStreamWalker` iterator~~ ✅ Done (v0.5.0)
-5. ~~**Tier 5** — `TlpPacket::new_flit()` + `get_flit_type()`~~ ✅ Done (v0.5.0)
+5. ~~**Tier 5** — `TlpPacket::new_flit()` + `flit_type()`~~ ✅ Done (v0.5.0)
 
 See `docs/flit_mode_test_plan.md` for full architectural decisions and acceptance criteria.
