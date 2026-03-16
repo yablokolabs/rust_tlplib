@@ -10,13 +10,40 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  fmt:
+    name: Rustfmt
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: cargo fmt --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: cargo test --verbose
+
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.85
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.85"
+      - name: Build (MSRV)
+        run: cargo build
+      - name: Test (MSRV)
+        run: cargo test

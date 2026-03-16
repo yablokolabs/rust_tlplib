@@ -32,7 +32,7 @@ fn test_tlp_packet() {
     let d = vec![0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
     let tlp = TlpPacket::new(d, TlpMode::NonFlit).unwrap();
 
-    assert_eq!(tlp.get_tlp_type().unwrap(), TlpType::ConfType0ReadReq);
+    assert_eq!(tlp.tlp_type().unwrap(), TlpType::ConfType0ReadReq);
     // DW0 consumed as header; bytes[4..11] go into data() for downstream parsing
     assert_eq!(tlp.data(), [0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10]);
 }
@@ -113,7 +113,7 @@ fn tlp_packet_header_constructs_from_bytes() {
     let memrd32_header = [0x00, 0x00, 0x10, 0x01, 0x00, 0x00, 0x20, 0x0F, 0xF6, 0x20, 0x00, 0x0C];
 
     let mr = TlpPacketHeader::new(memrd32_header.to_vec(), TlpMode::NonFlit).unwrap();
-    assert_eq!(mr.get_tlp_type().unwrap(), TlpType::MemReadReq);
+    assert_eq!(mr.tlp_type().unwrap(), TlpType::MemReadReq);
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn test_tlp_packet_invalid_type() {
     // Test that TlpPacket::get_tlp_type properly returns error
     let invalid_data = vec![0x0f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
     let packet = TlpPacket::new(invalid_data, TlpMode::NonFlit).unwrap();
-    let result = packet.get_tlp_type();
+    let result = packet.tlp_type();
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), TlpError::InvalidType);
 }
@@ -150,7 +150,7 @@ fn atomic_fetchadd_3dw_32_parses_operands() {
     data.extend_from_slice(&operand);
 
     let pkt = mk_pkt(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &data);
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
 
     let a = new_atomic_req(&pkt).unwrap();
     assert_eq!(a.op(), AtomicOp::FetchAdd);
@@ -183,7 +183,7 @@ fn atomic_swap_4dw_64_parses_operands() {
     data.extend_from_slice(&operand);
 
     let pkt = mk_pkt(FMT_4DW_WITH_DATA, TY_ATOM_SWAP, &data);
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::SwapAtomicOpReq);
 
     let a = new_atomic_req(&pkt).unwrap();
     assert_eq!(a.op(), AtomicOp::Swap);
@@ -213,7 +213,7 @@ fn atomic_cas_3dw_32_parses_operands() {
     data.extend_from_slice(&payload);
 
     let pkt = mk_pkt(FMT_3DW_WITH_DATA, TY_ATOM_CAS, &data);
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
 
     let a = new_atomic_req(&pkt).unwrap();
     assert_eq!(a.op(), AtomicOp::CompareSwap);
@@ -255,8 +255,8 @@ fn dmwr32_decode_via_tlppacket() {
     // DMWr32: fmt=010, type=11011 → byte0 = 0x5B
     let data = vec![0x5B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
     let pkt = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
-    assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+    assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 }
 
 #[test]
@@ -264,19 +264,19 @@ fn dmwr64_decode_via_tlppacket() {
     // DMWr64: fmt=011, type=11011 → byte0 = 0x7B
     let data = vec![0x7B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
     let pkt = TlpPacket::new(data, TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
-    assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+    assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 }
 
 #[test]
 fn dmwr_rejects_nodata_formats() {
     // NoData 3DW: fmt=000, type=11011 → byte0 = 0x1B
     let pkt1 = TlpPacket::new(vec![0x1B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt1.get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+    assert_eq!(pkt1.tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
 
     // NoData 4DW: fmt=001, type=11011 → byte0 = 0x3B
     let pkt2 = TlpPacket::new(vec![0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt2.get_tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
+    assert_eq!(pkt2.tlp_type().unwrap_err(), TlpError::UnsupportedCombination);
 }
 
 #[test]
@@ -294,14 +294,14 @@ fn dmwr_is_non_posted() {
 fn msg_req_decode_route_to_rc_3dw_no_data() {
     // Fmt=000 (3DW no data), Type=10000 (route to RC) → byte0 = 0x10
     let pkt = TlpPacket::new(vec![0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MsgReq);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReq);
 }
 
 #[test]
 fn msg_req_data_decode_route_to_rc_3dw_with_data() {
     // Fmt=010 (3DW with data), Type=10000 (route to RC) → byte0 = 0x50
     let pkt = TlpPacket::new(vec![0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MsgReqData);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReqData);
 }
 
 #[test]
@@ -313,7 +313,7 @@ fn msg_req_all_six_routing_subtypes_decode() {
         let byte0 = (0b000 << 5) | (routing_bits & 0x1f); // Fmt=000
         let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
         assert_eq!(
-            pkt.get_tlp_type().unwrap(), TlpType::MsgReq,
+            pkt.tlp_type().unwrap(), TlpType::MsgReq,
             "Routing sub-type {:#07b} should decode to MsgReq", routing_bits
         );
     }
@@ -326,7 +326,7 @@ fn msg_req_data_all_six_routing_subtypes_decode() {
         let byte0 = (0b010 << 5) | (routing_bits & 0x1f); // Fmt=010
         let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
         assert_eq!(
-            pkt.get_tlp_type().unwrap(), TlpType::MsgReqData,
+            pkt.tlp_type().unwrap(), TlpType::MsgReqData,
             "Routing sub-type {:#07b} with WithData3DW should decode to MsgReqData", routing_bits
         );
     }
@@ -344,7 +344,7 @@ fn msg_req_end_to_end_path_with_new_msg_req() {
         0x00, 0x00, 0x00, 0x00, // DW2: route word
     ];
     let pkt = TlpPacket::new(pkt_bytes, TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::MsgReq);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::MsgReq);
 
     let msg = new_msg_req(pkt.data().to_vec());
     assert_eq!(msg.req_id(),   0xBEEF);
@@ -361,7 +361,7 @@ fn local_tlp_prefix_decode_type4_zero() {
     // Fmt=100 (TlpPrefix), Type[4]=0 → LocalTlpPrefix
     // byte0 = (0b100 << 5) | 0b00000 = 0x80
     let pkt = TlpPacket::new(vec![0x80, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::LocalTlpPrefix);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::LocalTlpPrefix);
 }
 
 #[test]
@@ -369,7 +369,7 @@ fn end_to_end_tlp_prefix_decode_type4_one() {
     // Fmt=100 (TlpPrefix), Type[4]=1 → EndToEndTlpPrefix
     // byte0 = (0b100 << 5) | 0b10000 = 0x90
     let pkt = TlpPacket::new(vec![0x90, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-    assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::EndToEndTlpPrefix);
+    assert_eq!(pkt.tlp_type().unwrap(), TlpType::EndToEndTlpPrefix);
 }
 
 #[test]
@@ -378,14 +378,14 @@ fn tlp_prefix_local_and_end_to_end_distinguished_by_bit4() {
     for type_bits in [0b00000u8, 0b00001, 0b00010, 0b00100, 0b01010] {
         let byte0 = (0b100u8 << 5) | (type_bits & 0x1f);
         let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::LocalTlpPrefix,
+        assert_eq!(pkt.tlp_type().unwrap(), TlpType::LocalTlpPrefix,
             "byte0={:#04x} (Type[4]=0) should be LocalTlpPrefix", byte0);
     }
     // All Type values with bit 4=1 → EndToEndTlpPrefix
     for type_bits in [0b10000u8, 0b10001, 0b10010, 0b11011] {
         let byte0 = (0b100u8 << 5) | (type_bits & 0x1f);
         let pkt = TlpPacket::new(vec![byte0, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::EndToEndTlpPrefix,
+        assert_eq!(pkt.tlp_type().unwrap(), TlpType::EndToEndTlpPrefix,
             "byte0={:#04x} (Type[4]=1) should be EndToEndTlpPrefix", byte0);
     }
 }
@@ -396,3 +396,4 @@ fn prefix_types_are_not_non_posted() {
     assert!(!TlpType::LocalTlpPrefix.is_non_posted());
     assert!(!TlpType::EndToEndTlpPrefix.is_non_posted());
 }
+

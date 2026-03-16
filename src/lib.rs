@@ -1,3 +1,10 @@
+#![warn(missing_docs)]
+#![deny(unsafe_code)]
+
+//! Rust library for parsing PCI Express Transaction Layer Packets (TLPs).
+//!
+//! Supports both non-flit (PCIe 1.0–5.0) and flit-mode (PCIe 6.0+) framing.
+
 use std::fmt::{self, Display};
 
 use bitfield::bitfield;
@@ -14,7 +21,7 @@ pub enum TlpMode {
     NonFlit,
 
     /// Flit-mode TLP framing (PCIe 6.0+).
-    /// Supported by `TlpPacket::new` and `TlpPacket::get_flit_type()`.
+    /// Supported by `TlpPacket::new` and `TlpPacket::flit_type()`.
     /// `TlpPacketHeader::new` with this mode returns `Err(TlpError::NotImplemented)`.
     Flit,
 }
@@ -52,13 +59,19 @@ impl fmt::Display for TlpError {
 
 impl std::error::Error for TlpError {}
 
+/// TLP format field encoding — encodes header size and whether a data payload is present.
 #[repr(u8)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TlpFmt {
+    /// 3 DW header, no data payload.
     NoDataHeader3DW     = 0b000,
+    /// 4 DW header, no data payload.
     NoDataHeader4DW     = 0b001,
+    /// 3 DW header with data payload.
     WithDataHeader3DW   = 0b010,
+    /// 4 DW header with data payload.
     WithDataHeader4DW   = 0b011,
+    /// TLP Prefix (not a request or completion).
     TlpPrefix           = 0b100,
 }
 
@@ -93,15 +106,20 @@ impl TryFrom<u32> for TlpFmt {
 /// Atomic operation discriminant
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AtomicOp {
+    /// Fetch-and-Add atomic operation.
     FetchAdd,
+    /// Unconditional Swap atomic operation.
     Swap,
+    /// Compare-and-Swap atomic operation.
     CompareSwap,
 }
 
 /// Operand width — derived from TLP format: 3DW → 32-bit, 4DW → 64-bit
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AtomicWidth {
+    /// 32-bit operand (3 DW header).
     W32,
+    /// 64-bit operand (4 DW header).
     W64,
 }
 
@@ -147,29 +165,51 @@ impl TryFrom<u32> for TlpFormatEncodingType {
     }
 }
 
+/// High-level TLP transaction type decoded from the DW0 Format and Type fields.
 #[derive(PartialEq)]
 #[derive(Debug)]
 pub enum TlpType {
+    /// 32-bit or 64-bit Memory Read Request.
     MemReadReq,
+    /// Locked Memory Read Request.
     MemReadLockReq,
+    /// 32-bit or 64-bit Memory Write Request.
     MemWriteReq,
+    /// I/O Read Request.
     IOReadReq,
+    /// I/O Write Request.
     IOWriteReq,
+    /// Configuration Type 0 Read Request.
     ConfType0ReadReq,
+    /// Configuration Type 0 Write Request.
     ConfType0WriteReq,
+    /// Configuration Type 1 Read Request.
     ConfType1ReadReq,
+    /// Configuration Type 1 Write Request.
     ConfType1WriteReq,
+    /// Message Request (no data).
     MsgReq,
+    /// Message Request with data payload.
     MsgReqData,
+    /// Completion without data.
     Cpl,
+    /// Completion with data.
     CplData,
+    /// Locked Completion without data.
     CplLocked,
+    /// Locked Completion with data.
     CplDataLocked,
+    /// Fetch-and-Add AtomicOp Request.
     FetchAddAtomicOpReq,
+    /// Unconditional Swap AtomicOp Request.
     SwapAtomicOpReq,
+    /// Compare-and-Swap AtomicOp Request.
     CompareSwapAtomicOpReq,
+    /// Deferrable Memory Write Request.
     DeferrableMemWriteReq,
+    /// Local TLP Prefix.
     LocalTlpPrefix,
+    /// End-to-End TLP Prefix.
     EndToEndTlpPrefix,
 }
 
@@ -384,31 +424,48 @@ impl<T: AsRef<[u8]>> TlpHeader<T> {
 /// Both 3DW (32-bit) and 4DW (64-bit) headers implement this trait
 /// 3DW header is also used for all Legacy IO Requests.
 pub trait MemRequest {
+    /// Returns the Requester ID field (Bus/Device/Function).
     fn address(&self) -> u64;
+    /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
+    /// Returns the Last DW Byte Enable nibble.
     fn ldwbe(&self) -> u8;
+    /// Returns the First DW Byte Enable nibble.
     fn fdwbe(&self) -> u8;
 }
 
+/// Bitfield structure for both 3DW Memory Request and Legacy IO Request headers.
 // Structure for both 3DW Memory Request as well as Legacy IO Request
 bitfield! {
     pub struct MemRequest3DW(MSB0 [u8]);
     u32;
+    /// Returns the Requester ID field.
     pub get_requester_id,   _: 15, 0;
+    /// Returns the Tag field.
     pub get_tag,            _: 23, 16;
+    /// Returns the Last DW Byte Enable nibble.
     pub get_last_dw_be,     _: 27, 24;
+    /// Returns the First DW Byte Enable nibble.
     pub get_first_dw_be,    _: 31, 28;
+    /// Returns the 32-bit address field.
     pub get_address32,      _: 63, 32;
 }
 
+/// Bitfield structure for 4DW Memory Request headers.
 bitfield! {
     pub struct MemRequest4DW(MSB0 [u8]);
     u64;
+    /// Returns the Requester ID field.
     pub get_requester_id,   _: 15, 0;
+    /// Returns the Tag field.
     pub get_tag,            _: 23, 16;
+    /// Returns the Last DW Byte Enable nibble.
     pub get_last_dw_be,     _: 27, 24;
+    /// Returns the First DW Byte Enable nibble.
     pub get_first_dw_be,    _: 31, 28;
+    /// Returns the 64-bit address field.
     pub get_address64,      _: 95, 32;
 }
 
@@ -469,9 +526,9 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 /// fn decode(bytes: Vec<u8>) -> Result<(), TlpError> {
 ///     let tlp = TlpPacket::new(bytes, TlpMode::NonFlit)?;
 ///
-///     let tlpfmt = tlp.get_tlp_format()?;
+///     let tlpfmt = tlp.tlp_format()?;
 ///     // MemRequest contains only fields specific to PCI Memory Requests
-///     let mem_req: Box<dyn MemRequest> = new_mem_req(tlp.get_data(), &tlpfmt)?;
+///     let mem_req: Box<dyn MemRequest> = new_mem_req(tlp.data(), &tlpfmt)?;
 ///
 ///     // Address is 64 bits regardless of TLP format
 ///     // println!("Memory Request Address: {:x}", mem_req.address());
@@ -479,7 +536,7 @@ impl <T: AsRef<[u8]>> MemRequest for MemRequest4DW<T> {
 ///     // Format of TLP (3DW vs 4DW) is stored in the TLP header
 ///     println!("This TLP size is: {}", tlpfmt);
 ///     // Type LegacyIO vs MemRead vs MemWrite is stored in first DW of TLP
-///     println!("This TLP type is: {:?}", tlp.get_tlp_type());
+///     println!("This TLP type is: {:?}", tlp.tlp_type());
 ///     Ok(())
 /// }
 ///
@@ -502,12 +559,19 @@ pub fn new_mem_req(bytes: impl Into<Vec<u8>>, format: &TlpFmt) -> Result<Box<dyn
 /// Configuration Requests Headers are always same size (3DW),
 /// this trait is provided to have same API as other headers with variable size
 pub trait ConfigurationRequest {
+    /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
+    /// Returns the Bus Number.
     fn bus_nr(&self) -> u8;
+    /// Returns the Device Number.
     fn dev_nr(&self) -> u8;
+    /// Returns the Function Number.
     fn func_nr(&self) -> u8;
+    /// Returns the Extended Register Number.
     fn ext_reg_nr(&self) -> u8;
+    /// Returns the Register Number.
     fn reg_nr(&self) -> u8;
 }
 
@@ -534,25 +598,37 @@ pub trait ConfigurationRequest {
 /// let tlp = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 ///
 /// // data() returns DW1+DW2 (8 bytes) — exactly what ConfigRequest needs
-/// let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.data().to_vec());
+/// // data() returns &[u8] — pass it directly, no .to_vec() needed
+/// let config_req: Box<dyn ConfigurationRequest> = new_conf_req(tlp.data());
 /// assert_eq!(config_req.bus_nr(), 0xC2);
 /// ```
-pub fn new_conf_req(bytes: Vec<u8>) -> Box<dyn ConfigurationRequest> {
-	Box::new(ConfigRequest(bytes))
+pub fn new_conf_req(bytes: impl Into<Vec<u8>>) -> Box<dyn ConfigurationRequest> {
+	Box::new(ConfigRequest(bytes.into()))
 }
 
+/// Bitfield structure for Configuration Request headers (DW1+DW2).
 bitfield! {
     pub struct ConfigRequest(MSB0 [u8]);
     u32;
+    /// Returns the Requester ID field.
     pub get_requester_id,   _: 15, 0;
+    /// Returns the Tag field.
     pub get_tag,            _: 23, 16;
+    /// Returns the Last DW Byte Enable nibble.
     pub get_last_dw_be,     _: 27, 24;
+    /// Returns the First DW Byte Enable nibble.
     pub get_first_dw_be,    _: 31, 28;
+    /// Returns the Bus Number field.
     pub get_bus_nr,         _: 39, 32;
+    /// Returns the Device Number field.
     pub get_dev_nr,         _: 44, 40;
+    /// Returns the Function Number field.
     pub get_func_nr,        _: 47, 45;
+    /// Reserved field.
     pub rsvd,               _: 51, 48;
+    /// Returns the Extended Register Number field.
     pub get_ext_reg_nr,     _: 55, 52;
+    /// Returns the Register Number field.
     pub get_register_nr,    _: 61, 56;
     r,                      _: 63, 62;
 }
@@ -587,25 +663,40 @@ impl <T: AsRef<[u8]>> ConfigurationRequest for ConfigRequest<T> {
 /// To obtain this trait `new_cmpl_req()` function has to be used
 /// Trait release user from dealing with bitfield structures.
 pub trait CompletionRequest {
+    /// Returns the 16-bit Completer ID.
     fn cmpl_id(&self) -> u16;
+    /// Returns the 3-bit Completion Status field.
     fn cmpl_stat(&self) -> u8;
+    /// Returns the BCM (Byte Count Modified) bit.
     fn bcm(&self) -> u8;
+    /// Returns the 12-bit Byte Count field.
     fn byte_cnt(&self) -> u16;
+    /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
+    /// Returns the 7-bit Lower Address field.
     fn laddr(&self) -> u8;
 }
 
+/// Bitfield structure for Completion Request DW2+DW3 fields.
 bitfield! {
     pub struct CompletionReqDW23(MSB0 [u8]);
     u16;
+    /// Returns the Completer ID field.
     pub get_completer_id,   _: 15, 0;
+    /// Returns the Completion Status field.
     pub get_cmpl_stat,      _: 18, 16;
+    /// Returns the BCM bit.
     pub get_bcm,            _: 19, 19;
+    /// Returns the Byte Count field.
     pub get_byte_cnt,       _: 31, 20;
+    /// Returns the Requester ID field.
     pub get_req_id,         _: 47, 32;
+    /// Returns the Tag field.
     pub get_tag,            _: 55, 48;
     r,                      _: 56, 56;
+    /// Returns the Lower Address field.
     pub get_laddr,          _: 63, 57;
 }
 
@@ -650,28 +741,38 @@ impl <T: AsRef<[u8]>> CompletionRequest for CompletionReqDW23<T> {
 ///
 /// println!("Requester ID from Completion{}", cmpl_req.req_id());
 /// ```
-pub fn new_cmpl_req(bytes: Vec<u8>) -> Box<dyn CompletionRequest> {
-	Box::new(CompletionReqDW23(bytes))
+pub fn new_cmpl_req(bytes: impl Into<Vec<u8>>) -> Box<dyn CompletionRequest> {
+	Box::new(CompletionReqDW23(bytes.into()))
 }
 
 /// Message Request trait
 /// Provide method to access fields in DW2-4 header is handled by TlpHeader
 pub trait MessageRequest {
+    /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
+    /// Returns the 8-bit Message Code field.
 	fn msg_code(&self) -> u8;
-	/// DW3-4 vary with Message Code Field
+    /// DW3 content — interpretation varies with Message Code.
     fn dw3(&self) -> u32;
+    /// DW4 content — interpretation varies with Message Code.
     fn dw4(&self) -> u32;
 }
 
+/// Bitfield structure for Message Request DW2–DW4 fields.
 bitfield! {
     pub struct MessageReqDW24(MSB0 [u8]);
     u32;
+    /// Returns the Requester ID field.
     pub get_requester_id,   _: 15, 0;
+    /// Returns the Tag field.
     pub get_tag,            _: 23, 16;
+    /// Returns the Message Code field.
     pub get_msg_code,       _: 31, 24;
+    /// Returns DW3 content.
     pub get_dw3,            _: 63, 32;
+    /// Returns DW4 content.
     pub get_dw4,            _: 95, 64;
 }
 
@@ -710,17 +811,22 @@ impl <T: AsRef<[u8]>> MessageRequest for MessageReqDW24<T> {
 ///
 /// println!("Requester ID from Message{}", msg_req.req_id());
 /// ```
-pub fn new_msg_req(bytes: Vec<u8>) -> Box<dyn MessageRequest> {
-	Box::new(MessageReqDW24(bytes))
+pub fn new_msg_req(bytes: impl Into<Vec<u8>>) -> Box<dyn MessageRequest> {
+	Box::new(MessageReqDW24(bytes.into()))
 }
 
 /// Atomic Request trait: header fields and operand(s) for atomic op TLPs.
 /// Use `new_atomic_req()` to obtain a trait object from raw packet bytes.
 pub trait AtomicRequest: std::fmt::Debug {
+    /// Returns the atomic operation type.
     fn op(&self) -> AtomicOp;
+    /// Returns the operand width (32-bit or 64-bit).
     fn width(&self) -> AtomicWidth;
+    /// Returns the 16-bit Requester ID.
     fn req_id(&self) -> u16;
+    /// Returns the 8-bit Tag field.
     fn tag(&self) -> u8;
+    /// Returns the target address.
     fn address(&self) -> u64;
     /// Primary operand: addend (FetchAdd), new value (Swap), compare value (CAS)
     fn operand0(&self) -> u64;
@@ -789,8 +895,8 @@ fn read_operand_be(b: &[u8], off: usize, width: AtomicWidth) -> u64 {
 /// assert!(ar.operand1().is_none());
 /// ```
 pub fn new_atomic_req(pkt: &TlpPacket) -> Result<Box<dyn AtomicRequest>, TlpError> {
-    let tlp_type = pkt.get_tlp_type()?;
-    let format   = pkt.get_tlp_format()?;
+    let tlp_type = pkt.tlp_type()?;
+    let format   = pkt.tlp_format()?;
     let bytes    = pkt.data();
 
     let op = match tlp_type {
@@ -1153,6 +1259,26 @@ pub struct TlpPacketHeader {
     header: TlpHeader<Vec<u8>>,
 }
 
+impl fmt::Debug for TlpPacketHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TlpPacketHeader")
+            .field("format",  &self.header.get_format())
+            .field("type",    &self.header.get_type())
+            .field("tc",      &self.header.get_tc())
+            .field("t9",      &self.header.get_t9())
+            .field("t8",      &self.header.get_t8())
+            .field("attr_b2", &self.header.get_attr_b2())
+            .field("ln",      &self.header.get_ln())
+            .field("th",      &self.header.get_th())
+            .field("td",      &self.header.get_td())
+            .field("ep",      &self.header.get_ep())
+            .field("attr",    &self.header.get_attr())
+            .field("at",      &self.header.get_at())
+            .field("length",  &self.header.get_length())
+            .finish()
+    }
+}
+
 impl TlpPacketHeader {
     /// Create a new `TlpPacketHeader` from raw bytes and the specified framing mode.
     ///
@@ -1189,25 +1315,36 @@ impl TlpPacketHeader {
     /// - [`TlpError::InvalidType`] if the 5-bit Type field is not a known value.
     /// - [`TlpError::UnsupportedCombination`] if Fmt and Type are individually valid
     ///   but not a legal pair (e.g. IO Request with 4DW header).
-    pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
+    pub fn tlp_type(&self) -> Result<TlpType, TlpError> {
         self.header.get_tlp_type()
     }
 
-    /// Raw 3-bit Format field from DW0 (`bits[2:0]` of byte 0 in MSB0 layout).
-    pub fn get_format(&self) -> u32 {self.header.get_format()}
-    pub fn get_type(&self) -> u32 {self.header.get_type()}
-    pub fn get_t9(&self) -> u32 {self.header.get_t9()}
-    pub fn get_tc(&self) -> u32 {self.header.get_tc()}
-    pub fn get_t8(&self) -> u32 {self.header.get_t8()}
-    pub fn get_attr_b2(&self) -> u32 {self.header.get_attr_b2()}
-    pub fn get_ln(&self) -> u32 {self.header.get_ln()}
-    pub fn get_th(&self) -> u32 {self.header.get_th()}
-    pub fn get_td(&self) -> u32 {self.header.get_td()}
-    pub fn get_ep(&self) -> u32 {self.header.get_ep()}
-    pub fn get_attr(&self) -> u32 {self.header.get_attr()}
-    pub fn get_at(&self) -> u32 {self.header.get_at()}
-    pub fn get_length(&self) -> u32 {self.header.get_length()}
+    /// Decode and return the TLP type from the DW0 header fields.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`TlpPacketHeader::tlp_type`] which follows Rust naming conventions.
+    #[deprecated(since = "0.5.0", note = "use tlp_type() instead")]
+    pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
+        self.tlp_type()
+    }
 
+    /// Raw Traffic Class field from DW0 (`bits[11:9]`).
+    pub fn get_tc(&self) -> u32 { self.header.get_tc() }
+
+    /// Raw 3-bit Format field from DW0 (`bits[2:0]` of byte 0 in MSB0 layout).
+    pub(crate) fn get_format(&self) -> u32 {self.header.get_format()}
+    pub(crate) fn get_type(&self) -> u32 {self.header.get_type()}
+    pub(crate) fn get_t9(&self) -> u32 {self.header.get_t9()}
+    pub(crate) fn get_t8(&self) -> u32 {self.header.get_t8()}
+    pub(crate) fn get_attr_b2(&self) -> u32 {self.header.get_attr_b2()}
+    pub(crate) fn get_ln(&self) -> u32 {self.header.get_ln()}
+    pub(crate) fn get_th(&self) -> u32 {self.header.get_th()}
+    pub(crate) fn get_td(&self) -> u32 {self.header.get_td()}
+    pub(crate) fn get_ep(&self) -> u32 {self.header.get_ep()}
+    pub(crate) fn get_attr(&self) -> u32 {self.header.get_attr()}
+    pub(crate) fn get_at(&self) -> u32 {self.header.get_at()}
+    pub(crate) fn get_length(&self) -> u32 {self.header.get_length()}
 }
 
 /// TLP Packet structure is high level abstraction for entire TLP packet
@@ -1230,10 +1367,10 @@ impl TlpPacketHeader {
 /// let bytes = vec![0x00, 0x00, 0x20, 0x01, 0x04, 0x00, 0x00, 0x01, 0x20, 0x01, 0xFF, 0x00, 0xC2, 0x81, 0xFF, 0x10];
 /// let packet = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
 ///
-/// let header = packet.get_header();
+/// let header = packet.header();
 /// // TLP Type tells us what is this packet
-/// let tlp_type = header.get_tlp_type().unwrap();
-/// let tlp_format = packet.get_tlp_format().unwrap();
+/// let tlp_type = header.tlp_type().unwrap();
+/// let tlp_format = packet.tlp_format().unwrap();
 /// let requester_id;
 /// match (tlp_type) {
 ///      TlpType::MemReadReq |
@@ -1244,17 +1381,17 @@ impl TlpPacketHeader {
 ///      TlpType::IOWriteReq |
 ///      TlpType::FetchAddAtomicOpReq |
 ///      TlpType::SwapAtomicOpReq |
-///      TlpType::CompareSwapAtomicOpReq => requester_id = new_mem_req(packet.get_data(), &tlp_format).unwrap().req_id(),
+///      TlpType::CompareSwapAtomicOpReq => requester_id = new_mem_req(packet.data(), &tlp_format).unwrap().req_id(),
 ///      TlpType::ConfType0ReadReq |
 ///      TlpType::ConfType0WriteReq |
 ///      TlpType::ConfType1ReadReq |
-///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.get_data()).req_id(),
+///      TlpType::ConfType1WriteReq => requester_id = new_conf_req(packet.data().to_vec()).req_id(),
 ///      TlpType::MsgReq |
-///      TlpType::MsgReqData => requester_id = new_msg_req(packet.get_data()).req_id(),
+///      TlpType::MsgReqData => requester_id = new_msg_req(packet.data().to_vec()).req_id(),
 ///      TlpType::Cpl |
 ///      TlpType::CplData |
 ///      TlpType::CplLocked |
-///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.get_data()).req_id(),
+///      TlpType::CplDataLocked => requester_id = new_cmpl_req(packet.data().to_vec()).req_id(),
 ///      TlpType::LocalTlpPrefix |
 ///      TlpType::EndToEndTlpPrefix => println!("I need to implement TLP Type: {:?}", tlp_type),
 /// }
@@ -1265,6 +1402,16 @@ pub struct TlpPacket {
     /// `None` for non-flit packets.
     flit_dw0: Option<FlitDW0>,
     data: Vec<u8>,
+}
+
+impl fmt::Debug for TlpPacket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TlpPacket")
+            .field("header",   &self.header)
+            .field("flit_dw0", &self.flit_dw0)
+            .field("data_len", &self.data.len())
+            .finish()
+    }
 }
 
 impl TlpPacket {
@@ -1314,16 +1461,21 @@ impl TlpPacket {
         }
         let payload = bytes[hdr_bytes..].to_vec();
 
-        // Use a dummy non-flit header; callers should use get_flit_type() for type queries.
+        // Use a dummy non-flit header; callers should use flit_type() for type queries.
         let dummy = TlpPacketHeader::new_non_flit(vec![0u8; 4])?;
         Ok(TlpPacket { header: dummy, flit_dw0: Some(dw0), data: payload })
     }
 
+    // -----------------------------------------------------------------------
+    // Preferred (non-get_*) API
+    // -----------------------------------------------------------------------
+
     /// Returns a reference to the DW0 packet header.
     ///
-    /// For flit-mode packets the header fields reflect the dummy all-zero
-    /// placeholder; use [`TlpPacket::get_flit_type`] instead.
-    pub fn get_header(&self) -> &TlpPacketHeader {
+    /// For flit-mode packets the underlying `TlpPacketHeader` holds an all-zero
+    /// placeholder and its fields are **meaningless**.  Check [`TlpPacket::mode`]
+    /// first and use [`TlpPacket::flit_type`] for flit-mode packets.
+    pub fn header(&self) -> &TlpPacketHeader {
         &self.header
     }
 
@@ -1334,19 +1486,9 @@ impl TlpPacket {
         &self.data
     }
 
-    /// Returns the packet payload bytes as an owned `Vec<u8>`.
-    ///
-    /// # Deprecation
-    ///
-    /// Prefer [`TlpPacket::data`] which returns `&[u8]` without allocating.
-    #[deprecated(since = "0.6.0", note = "use data() which returns &[u8] instead")]
-    pub fn get_data(&self) -> Vec<u8> {
-        self.data.clone()
-    }
-
     /// Decode and return the TLP type from the DW0 header fields.
     ///
-    /// For flit-mode packets, use [`TlpPacket::get_flit_type`] instead.
+    /// For flit-mode packets, use [`TlpPacket::flit_type`] instead.
     ///
     /// # Errors
     ///
@@ -1354,22 +1496,22 @@ impl TlpPacket {
     /// - [`TlpError::InvalidFormat`] if the 3-bit Fmt field is unknown.
     /// - [`TlpError::InvalidType`] if the 5-bit Type field is unknown.
     /// - [`TlpError::UnsupportedCombination`] if the Fmt/Type pair is not legal.
-    pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
+    pub fn tlp_type(&self) -> Result<TlpType, TlpError> {
         if self.flit_dw0.is_some() {
             return Err(TlpError::NotImplemented);
         }
-        self.header.get_tlp_type()
+        self.header.tlp_type()
     }
 
     /// Decode and return the TLP format (3DW/4DW, with/without data) from DW0.
     ///
-    /// For flit-mode packets, use [`TlpPacket::get_flit_type`] instead.
+    /// For flit-mode packets, use [`TlpPacket::flit_type`] instead.
     ///
     /// # Errors
     ///
     /// - [`TlpError::NotImplemented`] if this packet was created with `TlpMode::Flit`.
     /// - [`TlpError::InvalidFormat`] if the 3-bit Fmt field is not a known value.
-    pub fn get_tlp_format(&self) -> Result<TlpFmt, TlpError> {
+    pub fn tlp_format(&self) -> Result<TlpFmt, TlpError> {
         if self.flit_dw0.is_some() {
             return Err(TlpError::NotImplemented);
         }
@@ -1378,8 +1520,84 @@ impl TlpPacket {
 
     /// Returns the flit-mode TLP type when the packet was created from
     /// `TlpMode::Flit` bytes, or `None` for non-flit packets.
-    pub fn get_flit_type(&self) -> Option<FlitTlpType> {
+    pub fn flit_type(&self) -> Option<FlitTlpType> {
         self.flit_dw0.map(|d| d.tlp_type)
+    }
+
+    /// Returns the framing mode this packet was created with.
+    ///
+    /// Use this to dispatch cleanly between the flit-mode and non-flit-mode
+    /// method sets.  Relying on `flit_type().is_some()` as an indirect proxy
+    /// works but obscures intent; `mode()` makes the check self-documenting:
+    ///
+    /// ```
+    /// use rtlp_lib::{TlpPacket, TlpMode};
+    ///
+    /// # let bytes = vec![0x00u8; 4];
+    /// let pkt = TlpPacket::new(bytes, TlpMode::NonFlit).unwrap();
+    /// match pkt.mode() {
+    ///     TlpMode::Flit    => { /* use pkt.flit_type() */ }
+    ///     TlpMode::NonFlit => { /* use pkt.tlp_type(), pkt.tlp_format() */ }
+    ///     // TlpMode is #[non_exhaustive] — wildcard required in external code
+    ///     _ => {}
+    /// }
+    /// ```
+    pub fn mode(&self) -> TlpMode {
+        if self.flit_dw0.is_some() { TlpMode::Flit } else { TlpMode::NonFlit }
+    }
+
+    // -----------------------------------------------------------------------
+    // Deprecated aliases — kept for backward compatibility
+    // -----------------------------------------------------------------------
+
+    /// Returns a reference to the DW0 packet header.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`TlpPacket::header`] which follows Rust naming conventions.
+    #[deprecated(since = "0.5.0", note = "use header() instead")]
+    pub fn get_header(&self) -> &TlpPacketHeader {
+        self.header()
+    }
+
+    /// Returns the packet payload bytes as an owned `Vec<u8>`.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`TlpPacket::data`] which returns `&[u8]` without allocating.
+    #[deprecated(since = "0.5.0", note = "use data() which returns &[u8] instead")]
+    pub fn get_data(&self) -> Vec<u8> {
+        self.data.clone()
+    }
+
+    /// Decode and return the TLP type from the DW0 header fields.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`TlpPacket::tlp_type`] which follows Rust naming conventions.
+    #[deprecated(since = "0.5.0", note = "use tlp_type() instead")]
+    pub fn get_tlp_type(&self) -> Result<TlpType, TlpError> {
+        self.tlp_type()
+    }
+
+    /// Decode and return the TLP format from DW0.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`TlpPacket::tlp_format`] which follows Rust naming conventions.
+    #[deprecated(since = "0.5.0", note = "use tlp_format() instead")]
+    pub fn get_tlp_format(&self) -> Result<TlpFmt, TlpError> {
+        self.tlp_format()
+    }
+
+    /// Returns the flit-mode TLP type.
+    ///
+    /// # Deprecation
+    ///
+    /// Prefer [`TlpPacket::flit_type`] which follows Rust naming conventions.
+    #[deprecated(since = "0.5.0", note = "use flit_type() instead")]
+    pub fn get_flit_type(&self) -> Option<FlitTlpType> {
+        self.flit_type()
     }
 }
 
@@ -1548,7 +1766,7 @@ mod tests {
         // NOP flit TLP (type 0x00, 1 DW base header, no payload)
         let bytes = vec![0x00, 0x00, 0x00, 0x00];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
-        assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::Nop));
+        assert_eq!(pkt.flit_type(), Some(FlitTlpType::Nop));
         assert!(pkt.data().is_empty());
     }
 
@@ -1557,7 +1775,7 @@ mod tests {
         // MRd32 flit (type 0x03, 3 DW base header, no payload despite Length=1)
         let bytes = vec![0x03, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
-        assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemRead32));
+        assert_eq!(pkt.flit_type(), Some(FlitTlpType::MemRead32));
         assert!(pkt.data().is_empty()); // read request, no payload
     }
 
@@ -1571,15 +1789,15 @@ mod tests {
             0xDE, 0xAD, 0xBE, 0xEF, // payload
         ];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
-        assert_eq!(pkt.get_flit_type(), Some(FlitTlpType::MemWrite32));
+        assert_eq!(pkt.flit_type(), Some(FlitTlpType::MemWrite32));
         assert_eq!(pkt.data(), [0xDE, 0xAD, 0xBE, 0xEF]);
     }
 
     #[test]
     fn packet_new_flit_nonflit_returns_none_for_flit_type() {
-        // Non-flit packets should return None from get_flit_type()
+        // Non-flit packets should return None from flit_type()
         let pkt = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
-        assert_eq!(pkt.get_flit_type(), None);
+        assert_eq!(pkt.flit_type(), None);
     }
 
     #[test]
@@ -1823,10 +2041,10 @@ mod tests {
             0xDE, 0xAD, 0x00, 0x00, // address32=0xDEAD0000
         ];
         let pkt = TlpPacket::new(mk_tlp(0b010, 0b11011, &payload), TlpMode::NonFlit).unwrap();
-        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
-        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+        assert_eq!(pkt.tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
-        let mr = new_mem_req(pkt.data().to_vec(), &pkt.get_tlp_format().unwrap()).unwrap();
+        let mr = new_mem_req(pkt.data().to_vec(), &pkt.tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xABCD);
         assert_eq!(mr.tag(),    0x42);
         assert_eq!(mr.address(), 0xDEAD_0000);
@@ -1841,10 +2059,10 @@ mod tests {
             0x55, 0x66, 0x77, 0x88, // address64 lo
         ];
         let pkt = TlpPacket::new(mk_tlp(0b011, 0b11011, &payload), TlpMode::NonFlit).unwrap();
-        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
-        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+        assert_eq!(pkt.tlp_type().unwrap(), TlpType::DeferrableMemWriteReq);
+        assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
-        let mr = new_mem_req(pkt.data().to_vec(), &pkt.get_tlp_format().unwrap()).unwrap();
+        let mr = new_mem_req(pkt.data().to_vec(), &pkt.tlp_format().unwrap()).unwrap();
         assert_eq!(mr.req_id(), 0xBEEF);
         assert_eq!(mr.tag(),    0xA5);
         assert_eq!(mr.address(), 0x1122_3344_5566_7788);
@@ -1939,10 +2157,10 @@ mod tests {
 
         let pkt = TlpPacket::new(mk_tlp(FMT_3DW_WITH_DATA, TY_ATOM_FETCH, &payload), TlpMode::NonFlit).unwrap();
 
-        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
-        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
+        assert_eq!(pkt.tlp_type().unwrap(), TlpType::FetchAddAtomicOpReq);
+        assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader3DW);
 
-        let fmt = pkt.get_tlp_format().unwrap();
+        let fmt = pkt.tlp_format().unwrap();
         let mr = new_mem_req(pkt.data().to_vec(), &fmt).unwrap();
         assert_eq!(mr.req_id(),  0x1234);
         assert_eq!(mr.tag(),     0x56);
@@ -1968,10 +2186,10 @@ mod tests {
 
         let pkt = TlpPacket::new(mk_tlp(FMT_4DW_WITH_DATA, TY_ATOM_CAS, &payload), TlpMode::NonFlit).unwrap();
 
-        assert_eq!(pkt.get_tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
-        assert_eq!(pkt.get_tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
+        assert_eq!(pkt.tlp_type().unwrap(), TlpType::CompareSwapAtomicOpReq);
+        assert_eq!(pkt.tlp_format().unwrap(), TlpFmt::WithDataHeader4DW);
 
-        let fmt = pkt.get_tlp_format().unwrap();
+        let fmt = pkt.tlp_format().unwrap();
         let mr = new_mem_req(pkt.data().to_vec(), &fmt).unwrap();
         assert_eq!(mr.req_id(),  0xBEEF);
         assert_eq!(mr.tag(),     0xA5);
@@ -2316,5 +2534,40 @@ mod tests {
         assert_eq!(msg.dw3(),      0x1234_5678);
         assert_eq!(msg.dw4(),      0x9ABC_DEF0);
     }
-}
 
+    // ── Debug impls ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn tlp_packet_header_debug() {
+        let hdr = TlpPacketHeader::new(vec![0x00, 0x00, 0x20, 0x01], TlpMode::NonFlit).unwrap();
+        let s = format!("{:?}", hdr);
+        assert!(s.contains("TlpPacketHeader"));
+        assert!(s.contains("format"));
+        assert!(s.contains("length"));
+    }
+
+    #[test]
+    fn tlp_packet_debug() {
+        let pkt = TlpPacket::new(vec![0x40, 0x00, 0x00, 0x01, 0xDE, 0xAD], TlpMode::NonFlit).unwrap();
+        let s = format!("{:?}", pkt);
+        assert!(s.contains("TlpPacket"));
+        assert!(s.contains("data_len"));
+    }
+
+    #[test]
+    fn packet_mode_returns_correct_mode() {
+        let non_flit = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x00], TlpMode::NonFlit).unwrap();
+        assert_eq!(non_flit.mode(), TlpMode::NonFlit);
+
+        let flit = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x00], TlpMode::Flit).unwrap();
+        assert_eq!(flit.mode(), TlpMode::Flit);
+    }
+
+    #[test]
+    fn tlp_packet_debug_flit() {
+        let pkt = TlpPacket::new(vec![0x00, 0x00, 0x00, 0x00], TlpMode::Flit).unwrap();
+        let s = format!("{:?}", pkt);
+        assert!(s.contains("TlpPacket"));
+        assert!(s.contains("flit_dw0"));
+    }
+}
