@@ -30,9 +30,12 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    // Config / completion / message — accept any bytes directly, always succeed,
-    // no TlpFmt needed (these are fixed-width 3DW structures).
-    {
+    // Config / completion / message: bitfield views read fixed sizes from the
+    // provided buffer and will panic if the buffer is too short. Guards ensure
+    // the fuzzer never crashes on short inputs — it simply skips those paths.
+
+    // ConfigRequest reads up to byte 7 (64-bit field) — requires 8 bytes.
+    if bytes.len() >= 8 {
         let cr = new_conf_req(bytes.clone());
         let _ = cr.req_id();
         let _ = cr.tag();
@@ -43,7 +46,8 @@ fuzz_target!(|data: &[u8]| {
         let _ = cr.reg_nr();
     }
 
-    {
+    // CompletionReqDW23 reads laddr at bits[63:57] — requires 8 bytes.
+    if bytes.len() >= 8 {
         let cpl = new_cmpl_req(bytes.clone());
         let _ = cpl.cmpl_id();
         let _ = cpl.cmpl_stat();
@@ -54,7 +58,8 @@ fuzz_target!(|data: &[u8]| {
         let _ = cpl.laddr();
     }
 
-    {
+    // MessageReqDW24 reads dw4 at bits[95:64] — requires 12 bytes.
+    if bytes.len() >= 12 {
         let msg = new_msg_req(bytes.clone());
         let _ = msg.req_id();
         let _ = msg.tag();

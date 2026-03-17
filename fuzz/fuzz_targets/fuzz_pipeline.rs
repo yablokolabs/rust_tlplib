@@ -39,35 +39,41 @@ fuzz_target!(|data: &[u8]| {
                 | TlpType::ConfType0WriteReq
                 | TlpType::ConfType1ReadReq
                 | TlpType::ConfType1WriteReq => {
-                    // new_conf_req is infallible — always returns Box<dyn ConfigurationRequest>
-                    let cr = new_conf_req(pkt.data());
-                    let _ = cr.req_id();
-                    let _ = cr.tag();
-                    let _ = cr.bus_nr();
-                    let _ = cr.dev_nr();
-                    let _ = cr.func_nr();
-                    let _ = cr.ext_reg_nr();
-                    let _ = cr.reg_nr();
+                    // Guard: ConfigRequest bitfield reads up to byte 7 (64-bit field).
+                    if pkt.data().len() >= 8 {
+                        let cr = new_conf_req(pkt.data());
+                        let _ = cr.req_id();
+                        let _ = cr.tag();
+                        let _ = cr.bus_nr();
+                        let _ = cr.dev_nr();
+                        let _ = cr.func_nr();
+                        let _ = cr.ext_reg_nr();
+                        let _ = cr.reg_nr();
+                    }
                 }
                 TlpType::Cpl | TlpType::CplData | TlpType::CplLocked | TlpType::CplDataLocked => {
-                    // new_cmpl_req is infallible — always returns Box<dyn CompletionRequest>
-                    let cpl = new_cmpl_req(pkt.data());
-                    let _ = cpl.cmpl_id();
-                    let _ = cpl.cmpl_stat();
-                    let _ = cpl.bcm();
-                    let _ = cpl.byte_cnt();
-                    let _ = cpl.req_id();
-                    let _ = cpl.tag();
-                    let _ = cpl.laddr();
+                    // Guard: CompletionReqDW23 bitfield reads up to byte 7 (laddr at bits[63:57]).
+                    if pkt.data().len() >= 8 {
+                        let cpl = new_cmpl_req(pkt.data());
+                        let _ = cpl.cmpl_id();
+                        let _ = cpl.cmpl_stat();
+                        let _ = cpl.bcm();
+                        let _ = cpl.byte_cnt();
+                        let _ = cpl.req_id();
+                        let _ = cpl.tag();
+                        let _ = cpl.laddr();
+                    }
                 }
                 TlpType::MsgReq | TlpType::MsgReqData => {
-                    // new_msg_req is infallible — always returns Box<dyn MessageRequest>
-                    let msg = new_msg_req(pkt.data());
-                    let _ = msg.req_id();
-                    let _ = msg.tag();
-                    let _ = msg.msg_code();
-                    let _ = msg.dw3();
-                    let _ = msg.dw4();
+                    // Guard: MessageReqDW24 reads dw4 at bits[95:64] — requires 12 bytes.
+                    if pkt.data().len() >= 12 {
+                        let msg = new_msg_req(pkt.data());
+                        let _ = msg.req_id();
+                        let _ = msg.tag();
+                        let _ = msg.msg_code();
+                        let _ = msg.dw3();
+                        let _ = msg.dw4();
+                    }
                 }
                 TlpType::FetchAddAtomicOpReq
                 | TlpType::SwapAtomicOpReq
