@@ -197,7 +197,7 @@ println!("bus={} dev={} func={} reg={}",
 ```rust
 use rtlp_lib::new_cmpl_req;
 
-let cpl = new_cmpl_req(pkt.data());
+let cpl = new_cmpl_req(pkt.data()).expect("insufficient bytes for CompletionRequest);
 println!("status={} byte_count={} lower_addr=0x{:02x}",
          cpl.cmpl_stat(), cpl.byte_cnt(), cpl.laddr());
 ```
@@ -210,7 +210,7 @@ println!("status={} byte_count={} lower_addr=0x{:02x}",
 ```rust
 use rtlp_lib::new_msg_req;
 
-let msg = new_msg_req(pkt.data());
+let msg = new_msg_req(pkt.data()).expect(insufficient bytes for MessageRequest);
 println!("msg_code=0x{:02X} dw3=0x{:08X} dw4=0x{:08X}",
          msg.msg_code(), msg.dw3(), msg.dw4());
 ```
@@ -624,3 +624,4 @@ Vec<u8>  ──►  TlpPacket::new(bytes, mode)
 
 All factory functions take `impl Into<Vec<u8>>` — pass `pkt.data()` directly,
 no `.to_vec()` needed.
+

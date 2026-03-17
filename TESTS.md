@@ -23,7 +23,7 @@ Categories:
 - Atomic operand parsing via `new_atomic_req()`
 - Completion lower-address field decode
 - Message DW3/DW4 upper-bit preservation
-- `TlpMode::Flit` stub — returns `NotImplemented`
+- `TlpPacketHeader::new(..., TlpMode::Flit)` stub — returns `NotImplemented`; `TlpPacket::new(..., TlpMode::Flit)` is fully implemented
 - `TlpError::NotImplemented` distinctness
 - `TlpMode` derive traits (Debug, Clone, Copy, PartialEq)
 - `is_non_posted()` exhaustive coverage — all 21 `TlpType` variants
@@ -109,33 +109,16 @@ Categories:
 
 **Test count: 45 total (45 passing, 0 `#[ignore]`)**
 
-#### Tier 0 — Regression guards (4 tests)
+All 5 tiers are fully implemented. Zero `#[ignore]` tests remain.
 
-| Test | What it checks |
-|---|---|
-| `flit_packet_new_succeeds_for_valid_flit` | `TlpMode::Flit` decodes MRd32 correctly |
-| `flit_header_new_returns_not_implemented` | `TlpPacketHeader::new(Flit)` → `NotImplemented` |
-| `flit_all_fm_vectors_parse_to_expected_type` | **Parser-driven**: every FM_* constant decodes to the expected `FlitTlpType` (catches spec errors in byte vectors) |
-| `flit_all_fm_vectors_parse_with_correct_ohc` | **Parser-driven**: every FM_* OHC bitmap decodes correctly |
-
-#### Tier 1 — DW0 field extraction ✅ (8 tests — implemented)
-Implemented: `FlitDW0::from_dw0()` in `src/lib.rs`
-
-#### Tier 2 — Per-vector header + size validation ✅ (15 tests — implemented)
-Implemented: `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` + `has_data_payload()` in `src/lib.rs`
-
-Includes `flit_t2_total_bytes_length_zero_encodes_1024dw` — verifies PCIe spec rule that `Length=0` encodes 1024 DW.
-
-#### Tier 3 — OHC field parsing and mandatory-OHC validation ✅ (6 tests — implemented)
-Implemented: `FlitOhcA::from_bytes()` + `FlitDW0::validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`
-
-#### Tier 4 — Packed stream walking ✅ (3 tests — implemented)
-Implemented: `FlitStreamWalker` iterator in `src/lib.rs`
-
-#### Tier 5 — End-to-end `TlpMode::Flit` pipeline ✅ (10 tests — implemented)
-Implemented: `TlpPacket::new_flit()` + `flit_type()`
-
-Includes atomic operand-value verification for `FM_FETCHADD32` (operand=0x01000000) and `FM_CAS32` (compare=0x11111111, swap=0x22222222).
+| Tier | Tests | What's covered |
+|---|---:|---|
+| 0 — Regression guards | 4 | `TlpPacket::new(Flit)` works; `TlpPacketHeader::new(Flit)` returns `NotImplemented`; parser-driven type + OHC checks for all FM_* vectors |
+| 1 — DW0 field extraction | 8 | `FlitDW0::from_dw0()` fields: `tlp_type`, `tc`, `ohc`, `ts`, `attr`, `length` |
+| 2 — Header + size validation | 15 | `base_header_dw()`, `total_bytes()`, `has_data_payload()`, `is_read_request()`; `Length=0` encodes 1024 DW per spec |
+| 3 — OHC parsing + mandatory OHC | 6 | `FlitOhcA::from_bytes()` PASID/fdwbe/ldwbe; IoWrite and CfgWrite0 mandatory OHC rules |
+| 4 — Stream walking | 3 | `FlitStreamWalker` over packed TLP byte streams; truncation error; end-of-stream |
+| 5 — End-to-end pipeline | 10 | `TlpPacket::new(bytes, TlpMode::Flit)` for all FM_* vectors; atomic operand values verified |
 
 **FM_* byte vector constants (all defined in this file):**
 
@@ -232,16 +215,6 @@ cargo test -- --nocapture
 5. **Always Green** — all 212 tests pass at every commit (0 ignored)
 
 ---
-
-## Flit Mode Implementation Status (v0.5.0)
-
-All tiers complete — no `#[ignore]` tests remain:
-
-1. ~~**Tier 1** — `FlitDW0` struct + `from_dw0()`~~ ✅ Done (v0.4.1)
-2. ~~**Tier 2** — `FlitTlpType` enum + `base_header_dw()` + `total_bytes()` + `has_data_payload()`~~ ✅ Done (v0.5.0)
-3. ~~**Tier 3** — `FlitOhcA` + `validate_mandatory_ohc()` + `TlpError::MissingMandatoryOhc`~~ ✅ Done (v0.4.1)
-4. ~~**Tier 4** — `FlitStreamWalker` iterator~~ ✅ Done (v0.5.0)
-5. ~~**Tier 5** — `TlpPacket::new_flit()` + `flit_type()`~~ ✅ Done (v0.5.0)
 
 See `docs/tlp_reference.md` for byte-level TLP examples and the complete test inventory for both framing modes.
 

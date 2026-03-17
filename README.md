@@ -78,11 +78,11 @@ match packet.mode() {
             }
             TlpType::Cpl | TlpType::CplData |
             TlpType::CplLocked | TlpType::CplDataLocked => {
-                let cpl = new_cmpl_req(packet.data());
+                let cpl = new_cmpl_req(packet.data()).unwrap();
                 println!("completion status={}", cpl.cmpl_stat());
             }
             TlpType::MsgReq | TlpType::MsgReqData => {
-                let msg = new_msg_req(packet.data());
+                let msg = new_msg_req(packet.data()).unwrap();
                 println!("message code=0x{:02X}", msg.msg_code());
             }
             _ => println!("TLP type: {:?}", tlp_type),
@@ -116,7 +116,7 @@ assert!(!TlpType::MemWriteReq.is_non_posted());   // posted
 | Type | Description |
 |---|---|
 | `TlpPacket` | Full packet: DW0 header + remaining data bytes |
-| `TlpPacketHeader` | DW0-only wrapper with accessor methods for every header field |
+| `TlpPacketHeader` | DW0-only wrapper exposing selected header fields via public accessors |
 | `TlpMode` | Framing mode: `NonFlit` (PCIe 1–5) or `Flit` (PCIe 6.x) |
 
 **Key `TlpPacket` methods:**
@@ -235,3 +235,4 @@ See [TESTS.md](TESTS.md) for the full test structure and flit mode tier descript
 ## License
 
 Licensed under the 3-Clause BSD License — see [LICENSE](LICENSE).
+
