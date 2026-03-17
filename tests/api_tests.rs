@@ -595,7 +595,7 @@ fn api_all_expected_public_types_are_available() {
         ConfigRequest,
         FlitDW0,
         FlitOhcA,
-        // Flit mode types (Tier 1+2+3)
+        // Flit mode public API
         FlitTlpType,
         MemRequest3DW,
         MemRequest4DW,
@@ -886,3 +886,4 @@ fn tlp_packet_header_implements_debug() {
     assert!(s.contains("format"), "expected 'format' in: {s}");
     assert!(s.contains("length"), "expected 'length' in: {s}");
 }
+
