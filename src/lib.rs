@@ -1281,7 +1281,7 @@ impl<'a> FlitStreamWalker<'a> {
     }
 }
 
-impl<'a> Iterator for FlitStreamWalker<'a> {
+impl Iterator for FlitStreamWalker<'_> {
     type Item = Result<(usize, FlitTlpType, usize), TlpError>;
 
     fn next(&mut self) -> Option<Self::Item> {
