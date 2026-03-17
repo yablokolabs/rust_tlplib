@@ -4,38 +4,35 @@ use libfuzzer_sys::fuzz_target;
 use rtlp_lib::*;
 
 fuzz_target!(|data: &[u8]| {
-    // TlpPacket::new must never panic — it should return Ok or Err
-    let pkt = match TlpPacket::new(data.to_vec()) {
-        Ok(p) => p,
-        Err(_) => return,
-    };
+    // Test both framing modes — neither must ever panic
+    for &mode in &[TlpMode::NonFlit, TlpMode::Flit] {
+        let pkt = match TlpPacket::new(data.to_vec(), mode) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
 
-    // If parsing succeeded, none of these should panic
-    let _ = pkt.get_tlp_type();
-    let _ = pkt.get_tlp_format();
-    let _ = pkt.get_header().get_tlp_type();
+        // mode() must not panic
+        let _ = pkt.mode();
 
-    // Header field accessors must not panic
-    let hdr = pkt.get_header();
-    let _ = hdr.get_format();
-    let _ = hdr.get_type();
-    let _ = hdr.get_t9();
-    let _ = hdr.get_tc();
-    let _ = hdr.get_t8();
-    let _ = hdr.get_attr_b2();
-    let _ = hdr.get_ln();
-    let _ = hdr.get_th();
-    let _ = hdr.get_td();
-    let _ = hdr.get_ep();
-    let _ = hdr.get_attr();
-    let _ = hdr.get_at();
-    let _ = hdr.get_length();
+        // Type/format/flit queries must not panic
+        let _ = pkt.tlp_type();
+        let _ = pkt.tlp_format();
+        let _ = pkt.flit_type();
 
-    // get_data() must not panic
-    let _ = pkt.get_data();
+        // Debug impls must not panic (exercises all pub(crate) header fields internally)
+        let _ = format!("{:?}", pkt);
+        let _ = format!("{:?}", pkt.header());
 
-    // TlpPacketHeader::new must not panic
+        // payload access must not panic
+        let _ = pkt.data();
+
+        // get_tc() is the only pub bitfield accessor on TlpPacketHeader
+        let _ = pkt.header().get_tc();
+    }
+
+    // TlpPacketHeader::new (non-flit only — Flit returns NotImplemented)
     if data.len() >= 4 {
-        let _ = TlpPacketHeader::new(data[..4].to_vec());
+        let _ = TlpPacketHeader::new(data[..4].to_vec(), TlpMode::NonFlit);
+        let _ = TlpPacketHeader::new(data[..4].to_vec(), TlpMode::Flit);
     }
 });
