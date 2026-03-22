@@ -1787,11 +1787,12 @@ impl fmt::Display for TlpPacketHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.tlp_type() {
             Ok(t) => {
-                let fmt_val = TlpFmt::try_from(self.get_format());
-                let short = match &fmt_val {
-                    Ok(fm) => non_flit_short_name(&t, fm),
-                    Err(_) => "???",
-                };
+                // `tlp_type()` has already validated the format field, so this conversion
+                // is expected to succeed. A failure here would indicate a violated
+                // internal invariant between `tlp_type()` and `TlpFmt::try_from`.
+                let fm = TlpFmt::try_from(self.get_format())
+                    .expect("TlpPacketHeader::tlp_type succeeded with an invalid format field");
+                let short = non_flit_short_name(&t, &fm);
                 write!(
                     f,
                     "{short} len={} tc={} td={} ep={}",
