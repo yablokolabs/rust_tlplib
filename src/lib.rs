@@ -1822,14 +1822,14 @@ impl fmt::Display for TlpPacket {
     /// CplD len=1 cpl=2001 req=0400 tag=AB stat=0 bc=252
     /// CfgRd0 len=1 req=0100 tag=01 bus=02 dev=03 fn=1 reg=10
     /// Msg len=0 req=ABCD tag=01 code=7F
-    /// FAdd len=0 req=DEAD tag=42 addr=C0010004
+    /// FAdd len=1 req=DEAD tag=42 addr=C0010004
     /// ```
     ///
     /// # Flit examples
     /// ```text
     /// Flit:MWr32 len=4 tc=0 ohc=1
     /// Flit:NOP
-    /// Flit:CfgWr0 len=1 tc=0 ohc=1 [OHC-A: pasid=0 fdwbe=F ldwbe=0]
+    /// Flit:CfgWr0 len=1 tc=0 ohc=1
     /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.mode() {
@@ -1885,7 +1885,8 @@ impl fmt::Display for TlpPacket {
                     | TlpType::DeferrableMemWriteReq
                     | TlpType::IOReadReq
                     | TlpType::IOWriteReq => {
-                        if let Ok(mr) = new_mem_req(data.to_vec(), &fmt) {
+                        let header_len = core::cmp::min(data.len(), 12);
+                        if let Ok(mr) = new_mem_req(data[..header_len].to_vec(), &fmt) {
                             write!(
                                 f,
                                 "{short_name} len={length} req={:04X} tag={:02X} addr={:X}",
@@ -1902,7 +1903,8 @@ impl fmt::Display for TlpPacket {
                     | TlpType::ConfType0WriteReq
                     | TlpType::ConfType1ReadReq
                     | TlpType::ConfType1WriteReq => {
-                        if let Ok(cr) = new_conf_req(data.to_vec()) {
+                        let header_bytes = if data.len() >= 8 { &data[..8] } else { data };
+                        if let Ok(cr) = new_conf_req(header_bytes.to_vec()) {
                             write!(
                                 f,
                                 "{short_name} len={length} req={:04X} tag={:02X} bus={:02X} dev={:02X} fn={} reg={:02X}",
@@ -1922,7 +1924,8 @@ impl fmt::Display for TlpPacket {
                     | TlpType::CplData
                     | TlpType::CplLocked
                     | TlpType::CplDataLocked => {
-                        if let Ok(cpl) = new_cmpl_req(data.to_vec()) {
+                        let header_bytes = if data.len() >= 12 { &data[..12] } else { data };
+                        if let Ok(cpl) = new_cmpl_req(header_bytes.to_vec()) {
                             write!(
                                 f,
                                 "{short_name} len={length} cpl={:04X} req={:04X} tag={:02X} stat={} bc={}",
@@ -1938,7 +1941,8 @@ impl fmt::Display for TlpPacket {
                     }
                     // Messages — show req_id, tag, message code
                     TlpType::MsgReq | TlpType::MsgReqData => {
-                        if let Ok(msg) = new_msg_req(data.to_vec()) {
+                        let header_bytes = if data.len() > 12 { &data[..12] } else { data };
+                        if let Ok(msg) = new_msg_req(header_bytes.to_vec()) {
                             write!(
                                 f,
                                 "{short_name} len={length} req={:04X} tag={:02X} code={:02X}",
