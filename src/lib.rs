@@ -1838,7 +1838,7 @@ impl fmt::Display for TlpPacket {
     /// MRd32 len=1 req=0400 tag=20 addr=F620000C
     /// MWr64 len=4 req=BEEF tag=A5 addr=100000000
     /// CplD len=1 cpl=2001 req=0400 tag=AB stat=0 bc=252
-    /// CfgRd0 len=1 req=0100 tag=01 bus=02 dev=03 fn=1 reg=10
+    /// CfgRd0 len=1 req=0100 tag=01 bus=02 dev=03 fn=0 reg=10
     /// Msg len=0 req=ABCD tag=01 code=7F
     /// FAdd len=1 req=DEAD tag=42 addr=C0010004
     /// ```
