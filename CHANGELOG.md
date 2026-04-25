@@ -5,6 +5,16 @@ All notable changes to `rtlp_lib` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-04-25
+
+### Changed
+
+- Flit `Display` now always emits all five fields (`len`, `tc`, `ohc`, `attr`, `ts`) regardless of value. Previously `ohc`, `attr`, and `ts` were omitted when zero. This stabilises the column set for downstream parsers; lines anchored on the v0.5.1 default-case minimal output will see additional fields appear.
+
+### Fixed
+
+- Non-flit `Display` formatting now avoids heap allocations in the hot summary path and uses explicit format arms for memory request mnemonics, preserving panic-free fallback formatting for malformed inputs.
+
 ## [0.5.1] - 2026-04-24
 
 ### Added

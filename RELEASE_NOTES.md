@@ -1,3 +1,29 @@
+# Release Notes — rtlp-lib v0.5.2
+
+A small Display-format stability release on top of v0.5.1.
+
+## Changed
+
+- Flit `Display` output now always emits the full stable field set:
+
+  ```text
+  Flit:MWr32 len=4 tc=0 ohc=0 attr=0 ts=0
+  ```
+
+  In v0.5.1, zero-valued `ohc`, `attr`, and `ts` fields were omitted:
+
+  ```text
+  Flit:MWr32 len=4 tc=0
+  ```
+
+  The new output is better for downstream parsers because column presence no longer depends on field values. Non-flit `Display` output is unchanged.
+
+## Fixed
+
+- Non-flit `Display` formatting avoids heap allocations in the summary path and uses explicit memory-request format arms with panic-free fallback behavior.
+
+---
+
 # Release Notes — rtlp-lib v0.5.1
 
 A small, additive release on top of v0.5.0. No breaking changes — drop-in upgrade.
