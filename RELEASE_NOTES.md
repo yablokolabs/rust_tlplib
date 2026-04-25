@@ -1,3 +1,67 @@
+# Release Notes — rtlp-lib v0.5.1
+
+A small, additive release on top of v0.5.0. No breaking changes — drop-in upgrade.
+
+## What's New
+
+### `Display` for `TlpPacket` and `TlpPacketHeader`
+
+Both packet types now implement `std::fmt::Display`, producing a single-line
+Wireshark-style summary intended for logs and trace output:
+
+```text
+MRd32 len=1 req=0400 tag=20 addr=F620000C
+MWr64 len=4 req=BEEF tag=A5 addr=100000000
+CplD  len=1 cpl=2001 req=0400 tag=AB stat=0 bc=252
+CfgRd0 len=1 req=0100 tag=01 bus=02 dev=03 fn=0 reg=10
+Msg   len=0 req=ABCD tag=01 code=7F
+FAdd  len=1 req=DEAD tag=42 addr=C0010004
+Flit:MWr32 len=4 tc=0 ohc=1
+Flit:NOP
+```
+
+```rust
+let pkt = TlpPacket::new(bytes, TlpMode::NonFlit)?;
+println!("{}", pkt);          // one-line summary
+log::info!("rx: {pkt}");      // logger-friendly
+```
+
+The Display implementations are guaranteed total — they never panic, even on
+malformed or truncated input. Unrecognised Fmt/Type combinations degrade to
+`??? data=NB`; partial headers degrade to `<Mnemonic> len=N`.
+
+### `serde` Feature (Opt-In)
+
+Enable with:
+
+```toml
+rtlp-lib = { version = "0.5.1", features = ["serde"] }
+```
+
+This derives `Serialize` / `Deserialize` for the public value types:
+`TlpMode`, `TlpError`, `TlpFmt`, `TlpType`, `AtomicOp`, `AtomicWidth`,
+`FlitTlpType`, `FlitDW0`, `FlitOhcA`. Useful for capture-format pipelines and
+JSON-based diagnostics.
+
+`TlpPacket` and `TlpPacketHeader` are intentionally **not** serde-aware — the
+underlying `bitfield!` macro does not support serde derives. Serialise the raw
+byte buffer alongside the parsed value types if you need a round-trippable
+on-disk format.
+
+## Fixed
+
+- Flit-mode documentation: framing accuracy clarified — flit framing is a
+  structural feature of PCIe 6.0 Base Spec, not a speed-tier feature.
+
+## Upgrading from v0.5.0
+
+No code changes required. Both new features are purely additive:
+
+- `Display` impls only activate when something formats a packet.
+- `serde` is gated behind an opt-in Cargo feature.
+
+---
+
 # Release Notes — rtlp-lib v0.5.0
 
 ## What's New

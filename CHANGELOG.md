@@ -5,6 +5,40 @@ All notable changes to `rtlp_lib` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-04-24
+
+### Added
+
+- **`Display` implementation for `TlpPacket` and `TlpPacketHeader`** —
+  one-line, Wireshark-style packet summaries suitable for logs and trace output.
+  Both non-flit and flit-mode packets are supported. Examples:
+  ```text
+  MRd32 len=1 req=0400 tag=20 addr=F620000C
+  MWr64 len=4 req=BEEF tag=A5 addr=100000000
+  CplD len=1 cpl=2001 req=0400 tag=AB stat=0 bc=252
+  CfgRd0 len=1 req=0100 tag=01 bus=02 dev=03 fn=0 reg=10
+  Msg len=0 req=ABCD tag=01 code=7F
+  FAdd len=1 req=DEAD tag=42 addr=C0010004
+  Flit:MWr32 len=4 tc=0 ohc=1
+  Flit:NOP
+  ```
+  Display impls are total (never panic) and degrade gracefully on malformed input
+  to `??? data=NB` or `<Mnemonic> len=N` fallback lines.
+
+- **`serde` feature** (opt-in) — `Serialize`/`Deserialize` for all public value
+  types: `TlpMode`, `TlpError`, `TlpFmt`, `TlpType`, `AtomicOp`, `AtomicWidth`,
+  `FlitTlpType`, `FlitDW0`, `FlitOhcA`. Enable with:
+  ```toml
+  rtlp-lib = { version = "0.5.1", features = ["serde"] }
+  ```
+  `TlpPacket` and `TlpPacketHeader` are intentionally excluded — the underlying
+  `bitfield!` macro does not support serde derives.
+
+### Fixed
+
+- Documentation accuracy: flit-mode framing description corrected — flit framing
+  is a structural change (PCIe 6.0 Base Spec), not a speed-tier feature.
+
 ## [0.5.0] - 2026-03-16
 
 ### Added
