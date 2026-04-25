@@ -1742,19 +1742,23 @@ impl TlpPacket {
 /// Short mnemonic for a non-flit TLP type + format combination.
 fn non_flit_short_name(tlp_type: &TlpType, fmt: &TlpFmt) -> &'static str {
     match tlp_type {
-        // Wildcard arms: tlp_type() already validates that MemReadReq only appears with
-        // NoDataHeader3DW or NoDataHeader4DW, so the `_` arm here only matches
-        // NoDataHeader3DW in practice. Kept as wildcard for brevity since the valid
-        // combinations are enforced upstream.
         TlpType::MemReadReq => match fmt {
             TlpFmt::NoDataHeader4DW => "MRd64",
-            _ => "MRd32",
+            TlpFmt::NoDataHeader3DW => "MRd32",
+            // tlp_type() rejects other Fmt/Type pairs; guard against future regressions.
+            _ => {
+                debug_assert!(false, "MemReadReq with unexpected TlpFmt: {fmt}");
+                "MRd32"
+            }
         },
         TlpType::MemReadLockReq => "MRdLk",
-        // Same as MemReadReq — tlp_type() ensures only WithDataHeader3DW/4DW reach here.
         TlpType::MemWriteReq => match fmt {
             TlpFmt::WithDataHeader4DW => "MWr64",
-            _ => "MWr32",
+            TlpFmt::WithDataHeader3DW => "MWr32",
+            _ => {
+                debug_assert!(false, "MemWriteReq with unexpected TlpFmt: {fmt}");
+                "MWr32"
+            }
         },
         TlpType::IOReadReq => "IORd",
         TlpType::IOWriteReq => "IOWr",
@@ -1771,10 +1775,13 @@ fn non_flit_short_name(tlp_type: &TlpType, fmt: &TlpFmt) -> &'static str {
         TlpType::FetchAddAtomicOpReq => "FAdd",
         TlpType::SwapAtomicOpReq => "Swap",
         TlpType::CompareSwapAtomicOpReq => "CAS",
-        // Same pattern — tlp_type() enforces valid format combinations for DMWr.
         TlpType::DeferrableMemWriteReq => match fmt {
             TlpFmt::WithDataHeader4DW => "DMWr64",
-            _ => "DMWr32",
+            TlpFmt::WithDataHeader3DW => "DMWr32",
+            _ => {
+                debug_assert!(false, "DeferrableMemWriteReq with unexpected TlpFmt: {fmt}");
+                "DMWr32"
+            }
         },
         TlpType::LocalTlpPrefix => "LPfx",
         TlpType::EndToEndTlpPrefix => "E2EPfx",
@@ -1872,18 +1879,15 @@ impl fmt::Display for TlpPacket {
                         return Ok(());
                     }
 
-                    write!(f, " len={} tc={}", dw0.length, dw0.tc)?;
-
-                    let ohc = dw0.ohc_count();
-                    if ohc > 0 {
-                        write!(f, " ohc={}", ohc)?;
-                    }
-                    if dw0.attr != 0 {
-                        write!(f, " attr={}", dw0.attr)?;
-                    }
-                    if dw0.ts != 0 {
-                        write!(f, " ts={}", dw0.ts)?;
-                    }
+                    write!(
+                        f,
+                        " len={} tc={} ohc={} attr={} ts={}",
+                        dw0.length,
+                        dw0.tc,
+                        dw0.ohc_count(),
+                        dw0.attr,
+                        dw0.ts
+                    )?;
 
                     // Note: OHC-A bytes are consumed by the header parser and not
                     // available in data(). OHC presence is shown via ohc= count above.
@@ -1913,14 +1917,15 @@ impl fmt::Display for TlpPacket {
 
                 match tlp_type {
                     // Memory requests — show req_id, tag, address
+                    // Zero-alloc: construct bitfield structs directly on borrowed data.
                     TlpType::MemReadReq
                     | TlpType::MemReadLockReq
                     | TlpType::MemWriteReq
                     | TlpType::DeferrableMemWriteReq
                     | TlpType::IOReadReq
-                    | TlpType::IOWriteReq => {
-                        let header_len = core::cmp::min(data.len(), 12);
-                        if let Ok(mr) = new_mem_req(data[..header_len].to_vec(), &fmt) {
+                    | TlpType::IOWriteReq => match fmt {
+                        TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW if data.len() >= 8 => {
+                            let mr = MemRequest3DW(&data[..core::cmp::min(data.len(), 8)]);
                             write!(
                                 f,
                                 "{short_name} len={length} req={:04X} tag={:02X} addr={:X}",
@@ -1928,17 +1933,26 @@ impl fmt::Display for TlpPacket {
                                 mr.tag(),
                                 mr.address()
                             )
-                        } else {
-                            write!(f, "{short_name} len={length}")
                         }
-                    }
+                        TlpFmt::NoDataHeader4DW | TlpFmt::WithDataHeader4DW if data.len() >= 12 => {
+                            let mr = MemRequest4DW(&data[..12]);
+                            write!(
+                                f,
+                                "{short_name} len={length} req={:04X} tag={:02X} addr={:X}",
+                                mr.req_id(),
+                                mr.tag(),
+                                mr.address()
+                            )
+                        }
+                        _ => write!(f, "{short_name} len={length}"),
+                    },
                     // Config requests — show req_id, tag, bus/dev/fn/reg
                     TlpType::ConfType0ReadReq
                     | TlpType::ConfType0WriteReq
                     | TlpType::ConfType1ReadReq
                     | TlpType::ConfType1WriteReq => {
-                        let header_bytes = if data.len() >= 8 { &data[..8] } else { data };
-                        if let Ok(cr) = new_conf_req(header_bytes.to_vec()) {
+                        if data.len() >= 8 {
+                            let cr = ConfigRequest(&data[..8]);
                             write!(
                                 f,
                                 "{short_name} len={length} req={:04X} tag={:02X} bus={:02X} dev={:02X} fn={} reg={:02X}",
@@ -1958,8 +1972,8 @@ impl fmt::Display for TlpPacket {
                     | TlpType::CplData
                     | TlpType::CplLocked
                     | TlpType::CplDataLocked => {
-                        let header_bytes = if data.len() >= 12 { &data[..12] } else { data };
-                        if let Ok(cpl) = new_cmpl_req(header_bytes.to_vec()) {
+                        if data.len() >= 8 {
+                            let cpl = CompletionReqDW23(&data[..core::cmp::min(data.len(), 12)]);
                             write!(
                                 f,
                                 "{short_name} len={length} cpl={:04X} req={:04X} tag={:02X} stat={} bc={}",
@@ -1975,8 +1989,8 @@ impl fmt::Display for TlpPacket {
                     }
                     // Messages — show req_id, tag, message code
                     TlpType::MsgReq | TlpType::MsgReqData => {
-                        let header_bytes = if data.len() > 12 { &data[..12] } else { data };
-                        if let Ok(msg) = new_msg_req(header_bytes.to_vec()) {
+                        if data.len() >= 12 {
+                            let msg = MessageReqDW24(&data[..12]);
                             write!(
                                 f,
                                 "{short_name} len={length} req={:04X} tag={:02X} code={:02X}",
@@ -1988,17 +2002,27 @@ impl fmt::Display for TlpPacket {
                             write!(f, "{short_name} len={length}")
                         }
                     }
-                    // Atomics — show req_id, tag, address
+                    // Atomics — show req_id, tag, address (extracted directly, no Box)
                     TlpType::FetchAddAtomicOpReq
                     | TlpType::SwapAtomicOpReq
                     | TlpType::CompareSwapAtomicOpReq => {
-                        if let Ok(ar) = new_atomic_req(self) {
+                        if data.len() >= 8 {
+                            let req_id = u16::from_be_bytes([data[0], data[1]]);
+                            let tag = data[2];
+                            let address: u64 = match fmt {
+                                TlpFmt::WithDataHeader4DW if data.len() >= 12 => {
+                                    u64::from_be_bytes([
+                                        data[4], data[5], data[6], data[7], data[8], data[9],
+                                        data[10], data[11],
+                                    ])
+                                }
+                                _ => {
+                                    u32::from_be_bytes([data[4], data[5], data[6], data[7]]) as u64
+                                }
+                            };
                             write!(
                                 f,
-                                "{short_name} len={length} req={:04X} tag={:02X} addr={:X}",
-                                ar.req_id(),
-                                ar.tag(),
-                                ar.address()
+                                "{short_name} len={length} req={req_id:04X} tag={tag:02X} addr={address:X}",
                             )
                         } else {
                             write!(f, "{short_name} len={length}")
