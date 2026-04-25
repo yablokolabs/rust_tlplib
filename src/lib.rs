@@ -1745,20 +1745,15 @@ fn non_flit_short_name(tlp_type: &TlpType, fmt: &TlpFmt) -> &'static str {
         TlpType::MemReadReq => match fmt {
             TlpFmt::NoDataHeader4DW => "MRd64",
             TlpFmt::NoDataHeader3DW => "MRd32",
-            // tlp_type() rejects other Fmt/Type pairs; guard against future regressions.
-            _ => {
-                debug_assert!(false, "MemReadReq with unexpected TlpFmt: {fmt}");
-                "MRd32"
-            }
+            // tlp_type() rejects other Fmt/Type pairs; keep Display panic-free if that invariant regresses.
+            _ => "MRd32",
         },
         TlpType::MemReadLockReq => "MRdLk",
         TlpType::MemWriteReq => match fmt {
             TlpFmt::WithDataHeader4DW => "MWr64",
             TlpFmt::WithDataHeader3DW => "MWr32",
-            _ => {
-                debug_assert!(false, "MemWriteReq with unexpected TlpFmt: {fmt}");
-                "MWr32"
-            }
+            // tlp_type() rejects other Fmt/Type pairs; keep Display panic-free if that invariant regresses.
+            _ => "MWr32",
         },
         TlpType::IOReadReq => "IORd",
         TlpType::IOWriteReq => "IOWr",
@@ -1778,10 +1773,8 @@ fn non_flit_short_name(tlp_type: &TlpType, fmt: &TlpFmt) -> &'static str {
         TlpType::DeferrableMemWriteReq => match fmt {
             TlpFmt::WithDataHeader4DW => "DMWr64",
             TlpFmt::WithDataHeader3DW => "DMWr32",
-            _ => {
-                debug_assert!(false, "DeferrableMemWriteReq with unexpected TlpFmt: {fmt}");
-                "DMWr32"
-            }
+            // tlp_type() rejects other Fmt/Type pairs; keep Display panic-free if that invariant regresses.
+            _ => "DMWr32",
         },
         TlpType::LocalTlpPrefix => "LPfx",
         TlpType::EndToEndTlpPrefix => "E2EPfx",
@@ -1863,9 +1856,9 @@ impl fmt::Display for TlpPacket {
     ///
     /// # Flit examples
     /// ```text
-    /// Flit:MWr32 len=4 tc=0 ohc=1
+    /// Flit:MWr32 len=4 tc=0 ohc=0 attr=0 ts=0
     /// Flit:NOP
-    /// Flit:CfgWr0 len=1 tc=0 ohc=1
+    /// Flit:CfgWr0 len=1 tc=0 ohc=1 attr=0 ts=0
     /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.mode() {
@@ -1925,7 +1918,7 @@ impl fmt::Display for TlpPacket {
                     | TlpType::IOReadReq
                     | TlpType::IOWriteReq => match fmt {
                         TlpFmt::NoDataHeader3DW | TlpFmt::WithDataHeader3DW if data.len() >= 8 => {
-                            let mr = MemRequest3DW(&data[..core::cmp::min(data.len(), 8)]);
+                            let mr = MemRequest3DW(&data[..8]);
                             write!(
                                 f,
                                 "{short_name} len={length} req={:04X} tag={:02X} addr={:X}",
@@ -3403,9 +3396,7 @@ mod tests {
         // 4 DW payload
         bytes.extend_from_slice(&[0u8; 16]);
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
-        let s = format!("{pkt}");
-        assert!(s.starts_with("Flit:MWr32"));
-        assert!(s.contains("len=4"));
+        assert_eq!(format!("{pkt}"), "Flit:MWr32 len=4 tc=0 ohc=0 attr=0 ts=0");
     }
 
     #[test]
@@ -3417,10 +3408,7 @@ mod tests {
             0x00, 0x00, 0x10, 0x00, // DW2: addr32
         ];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
-        let s = format!("{pkt}");
-        assert!(s.starts_with("Flit:MRd32"));
-        assert!(s.contains("len=8"));
-        assert!(s.contains("tc=2"));
+        assert_eq!(format!("{pkt}"), "Flit:MRd32 len=8 tc=2 ohc=0 attr=0 ts=0");
     }
 
     #[test]
@@ -3434,9 +3422,7 @@ mod tests {
             0xAA, 0xBB, 0xCC, 0xDD, // payload (1 DW)
         ];
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
-        let s = format!("{pkt}");
-        assert!(s.starts_with("Flit:CfgWr0"));
-        assert!(s.contains("ohc=1"));
+        assert_eq!(format!("{pkt}"), "Flit:CfgWr0 len=1 tc=0 ohc=1 attr=0 ts=0");
     }
 
     #[test]
@@ -3444,6 +3430,22 @@ mod tests {
         let bytes = vec![0x8D, 0x00, 0x00, 0x00]; // LocalTlpPrefix: type=0x8D
         let pkt = TlpPacket::new(bytes, TlpMode::Flit).unwrap();
         assert_eq!(format!("{pkt}"), "Flit:LPfx");
+    }
+
+    #[test]
+    fn non_flit_short_name_unexpected_fmt_fallbacks_are_panic_free() {
+        assert_eq!(
+            non_flit_short_name(&TlpType::MemReadReq, &TlpFmt::WithDataHeader3DW),
+            "MRd32"
+        );
+        assert_eq!(
+            non_flit_short_name(&TlpType::MemWriteReq, &TlpFmt::NoDataHeader3DW),
+            "MWr32"
+        );
+        assert_eq!(
+            non_flit_short_name(&TlpType::DeferrableMemWriteReq, &TlpFmt::NoDataHeader3DW),
+            "DMWr32"
+        );
     }
 
     #[test]
